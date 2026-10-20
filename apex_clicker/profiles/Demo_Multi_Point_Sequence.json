@@ -1,0 +1,36 @@
+{
+  "mode": "SEQUENCE",
+  "sequence_config": {
+    "repeat_count": 5,
+    "humanizer_enabled": true,
+    "points": [
+      {
+        "x": 400,
+        "y": 300,
+        "button": "left",
+        "delay": 0.5,
+        "jitter_radius": 3,
+        "smooth_move": true,
+        "move_duration": 0.3
+      },
+      {
+        "x": 600,
+        "y": 300,
+        "button": "left",
+        "delay": 0.5,
+        "jitter_radius": 3,
+        "smooth_move": true,
+        "move_duration": 0.3
+      },
+      {
+        "x": 500,
+        "y": 500,
+        "button": "right",
+        "delay": 0.8,
+        "jitter_radius": 3,
+        "smooth_move": true,
+        "move_duration": 0.3
+      }
+    ]
+  }
+}

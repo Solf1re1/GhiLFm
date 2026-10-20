@@ -1,0 +1,25 @@
+build/
+*.spec
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# RemoteDeck project
+remotedeck/
+create_tray_shortcut.py
+run_tray.bat
+run.bat
+
+# Scratch image captures
+*.png
+!assets/*.png
+!assets/**/*.png
+
+# Release binaries (attach to GitHub Releases instead)
+dist/

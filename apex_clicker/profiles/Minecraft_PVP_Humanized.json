@@ -1,0 +1,15 @@
+{
+  "mode": "BURST",
+  "burst_config": {
+    "target_mode": "CURRENT",
+    "fixed_x": 0,
+    "fixed_y": 0,
+    "button": "left",
+    "interval": 0.05,
+    "repeat_limit": 0,
+    "humanizer_enabled": true,
+    "jitter_percent": 0.18,
+    "jitter_radius": 2,
+    "fatigue_enabled": true
+  }
+}
