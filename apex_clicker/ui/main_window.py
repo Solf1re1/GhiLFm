@@ -18,6 +18,13 @@ from apex_clicker.core.hotkey_manager import HotkeyManager
 from apex_clicker.core.input_driver import InputDriver
 
 from apex_clicker.ui.tabs.burst_tab import BurstTab
+from apex_clicker.ui.tabs.sequence_tab import SequenceTab
+from apex_clicker.ui.tabs.humanizer_tab import HumanizerTab
+from apex_clicker.ui.tabs.pixel_tab import PixelTab
+from apex_clicker.ui.tabs.template_tab import TemplateTab
+from apex_clicker.ui.tabs.key_spammer_tab import KeySpammerTab
+from apex_clicker.ui.tabs.macro_tab import MacroTab
+from apex_clicker.ui.tabs.settings_tab import SettingsTab
 from apex_clicker.ui.components.hud_overlay import MiniHudOverlay
 
 
@@ -314,13 +321,13 @@ class MainWindow(ctk.CTk):
         # Lazy-Loaded Tab Pages (only instantiates when clicked)
         self.pages = LazyPageDict({
             "burst": lambda: BurstTab(self.content_container, self.engine),
-            "sequence": lambda: __import__("apex_clicker.ui.tabs.sequence_tab", fromlist=["SequenceTab"]).SequenceTab(self.content_container, self.engine),
-            "humanizer": lambda: __import__("apex_clicker.ui.tabs.humanizer_tab", fromlist=["HumanizerTab"]).HumanizerTab(self.content_container, self.engine),
-            "pixel": lambda: __import__("apex_clicker.ui.tabs.pixel_tab", fromlist=["PixelTab"]).PixelTab(self.content_container, self.engine),
-            "template": lambda: __import__("apex_clicker.ui.tabs.template_tab", fromlist=["TemplateTab"]).TemplateTab(self.content_container, self.engine),
-            "keyspam": lambda: __import__("apex_clicker.ui.tabs.key_spammer_tab", fromlist=["KeySpammerTab"]).KeySpammerTab(self.content_container, self.engine),
-            "macro": lambda: __import__("apex_clicker.ui.tabs.macro_tab", fromlist=["MacroTab"]).MacroTab(self.content_container, self.macro_engine),
-            "settings": lambda: __import__("apex_clicker.ui.tabs.settings_tab", fromlist=["SettingsTab"]).SettingsTab(
+            "sequence": lambda: SequenceTab(self.content_container, self.engine),
+            "humanizer": lambda: HumanizerTab(self.content_container, self.engine),
+            "pixel": lambda: PixelTab(self.content_container, self.engine),
+            "template": lambda: TemplateTab(self.content_container, self.engine),
+            "keyspam": lambda: KeySpammerTab(self.content_container, self.engine),
+            "macro": lambda: MacroTab(self.content_container, self.macro_engine),
+            "settings": lambda: SettingsTab(
                 self.content_container,
                 self.engine,
                 self.hotkey_mgr,
@@ -354,10 +361,14 @@ class MainWindow(ctk.CTk):
                 break
 
         # Display target page
-        for p in self.pages.values():
-            p.pack_forget()
+        try:
+            for p in self.pages.values():
+                p.pack_forget()
 
-        self.pages[page_key].pack(fill="both", expand=True)
+            target_page = self.pages[page_key]
+            target_page.pack(fill="both", expand=True)
+        except Exception as e:
+            print(f"Error loading tab '{page_key}': {e}")
 
     def _setup_hotkeys(self):
         """Binds system-wide global hotkeys with Hold vs Toggle support."""
