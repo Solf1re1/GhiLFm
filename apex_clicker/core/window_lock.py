@@ -14,18 +14,24 @@ user32 = ctypes.windll.user32
 
 
 class WindowLockManager:
-    """Detects and matches active foreground windows for process locking."""
+    """Detects and matches active foreground windows for process locking with high-speed caching."""
 
     _last_check_time = 0.0
     _cached_result = True
     _cached_hwnd = 0
+    _cached_process = ""
+    _cached_title = ""
+    _pid_cache: Dict[int, str] = {}
 
-    @staticmethod
-    def get_foreground_info() -> Dict[str, str]:
+    @classmethod
+    def get_foreground_info(cls) -> Dict[str, str]:
         """Returns HWND, Title, and Process Name of current foreground window."""
         hwnd = user32.GetForegroundWindow()
         if not hwnd:
             return {"hwnd": 0, "title": "", "process": ""}
+
+        if hwnd == cls._cached_hwnd and cls._cached_process:
+            return {"hwnd": hwnd, "title": cls._cached_title, "process": cls._cached_process}
 
         # Window title
         length = user32.GetWindowTextLengthW(hwnd)
@@ -33,16 +39,24 @@ class WindowLockManager:
         user32.GetWindowTextW(hwnd, buff, length + 1)
         title = buff.value
 
-        # Process name
+        # Process name with PID cache
         pid = wintypes.DWORD()
         user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-        pname = ""
-        try:
-            p = psutil.Process(pid.value)
-            pname = p.name()
-        except Exception:
-            pass
+        pid_val = pid.value
+        pname = cls._pid_cache.get(pid_val)
+        if not pname:
+            try:
+                p = psutil.Process(pid_val)
+                pname = p.name()
+                if len(cls._pid_cache) > 256:
+                    cls._pid_cache.clear()
+                cls._pid_cache[pid_val] = pname
+            except Exception:
+                pname = ""
 
+        cls._cached_hwnd = hwnd
+        cls._cached_title = title
+        cls._cached_process = pname
         return {"hwnd": hwnd, "title": title, "process": pname}
 
     @classmethod
@@ -63,12 +77,19 @@ class WindowLockManager:
                     if title:
                         pid = wintypes.DWORD()
                         user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-                        try:
-                            p = psutil.Process(pid.value)
-                            pname = p.name()
+                        pid_val = pid.value
+                        pname = cls._pid_cache.get(pid_val)
+                        if not pname:
+                            try:
+                                p = psutil.Process(pid_val)
+                                pname = p.name()
+                                cls._pid_cache[pid_val] = pname
+                            except Exception:
+                                pname = ""
+                        if pname:
                             label = f"{title[:45]} ({pname})"
                             results.append((label, pname))
-                        except Exception:
+                        else:
                             results.append((title[:50], title))
             return True
 

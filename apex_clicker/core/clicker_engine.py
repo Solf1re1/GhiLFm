@@ -49,6 +49,7 @@ class ClickerEngine:
         self.current_cps = 0.0
         self._click_timestamps = collections.deque()
         self._stats_lock = threading.Lock()
+        self._last_stats_calc = 0.0
 
         # Advanced Controls
         self.target_window = ""          # Empty = all/any window
@@ -240,19 +241,21 @@ class ClickerEngine:
                 self.on_status_change(True, False, f"Running ({self.mode} Mode)")
 
     def _record_click(self):
-        """Tracks click count and sliding-window CPS calculation."""
+        """Tracks click count and micro-throttled sliding-window CPS calculation."""
         now = time.perf_counter()
-        with self._stats_lock:
-            self.total_clicks += 1
-            self._click_timestamps.append(now)
+        self.total_clicks += 1
+        self._click_timestamps.append(now)
 
-            while self._click_timestamps and (now - self._click_timestamps[0] > 1.0):
-                self._click_timestamps.popleft()
+        # Micro-throttle sliding window and UI callback to ~30 FPS to reduce lock contention and CPU load
+        if now - self._last_stats_calc >= 0.033:
+            self._last_stats_calc = now
+            with self._stats_lock:
+                while self._click_timestamps and (now - self._click_timestamps[0] > 1.0):
+                    self._click_timestamps.popleft()
+                self.current_cps = float(len(self._click_timestamps))
 
-            self.current_cps = float(len(self._click_timestamps))
-
-        if self.on_click_update:
-            self.on_click_update(self.total_clicks, self.current_cps)
+            if self.on_click_update:
+                self.on_click_update(self.total_clicks, self.current_cps)
 
     def get_exclude_rect(self) -> Optional[Tuple[int, int, int, int]]:
         """Returns the screen rectangle (x, y, w, h) of the UI to exclude from image searching."""

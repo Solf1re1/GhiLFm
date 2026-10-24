@@ -95,6 +95,7 @@ class MainWindow(ctk.CTk):
 
         # Mini HUD
         self.hud_window: Optional[MiniHudOverlay] = None
+        self._last_ui_update_time = 0.0
 
         # Build Sidebar & Pages
         self._build_layout()
@@ -465,6 +466,11 @@ class MainWindow(ctk.CTk):
         self.after(0, _update)
 
     def _on_engine_click_update(self, total_clicks: int, current_cps: float):
+        now = time.perf_counter()
+        if now - self._last_ui_update_time < 0.033:  # Throttle rendering to ~30 FPS for silky-smooth responsiveness
+            return
+        self._last_ui_update_time = now
+
         def _update():
             self.clicks_display.configure(text=f"{total_clicks:,}")
             self.cps_display.configure(text=f"{int(round(current_cps))} CPS")

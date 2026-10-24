@@ -7,6 +7,7 @@ accurate DPI handling, and multimedia timer management.
 import ctypes
 from ctypes import wintypes
 import math
+import threading
 import time
 from typing import Tuple, List, Optional, Callable
 
@@ -135,9 +136,17 @@ class InputDriver:
     _user32.SetCursorPos.argtypes = (ctypes.c_int, ctypes.c_int)
     _user32.SetCursorPos.restype = wintypes.BOOL
 
+    _thread_local = threading.local()
+    _cached_input = INPUT()
+    _cached_input.type = INPUT_MOUSE
+    _cached_input_ref = ctypes.byref(_cached_input)
+    _input_size = ctypes.sizeof(INPUT)
+
     @classmethod
     def ensure_desktop_access(cls):
-        """Ensures the calling thread is attached to the active interactive desktop."""
+        """Ensures the calling thread is attached to the active interactive desktop (cached per-thread)."""
+        if getattr(cls._thread_local, "attached", False):
+            return
         try:
             hwinsta = cls._user32.OpenWindowStationW("WinSta0", False, 0x10000000)
             if hwinsta:
@@ -145,6 +154,7 @@ class InputDriver:
                 hdesk = cls._user32.OpenDesktopW("Default", 0, False, 0x10000000)
                 if hdesk:
                     cls._user32.SetThreadDesktop(hdesk)
+                    cls._thread_local.attached = True
         except Exception:
             pass
 
@@ -316,15 +326,15 @@ class InputDriver:
 
     @classmethod
     def _send_mouse_event(cls, flags: int, data: int = 0, dx: int = 0, dy: int = 0):
-        inp = INPUT()
-        inp.type = INPUT_MOUSE
-        inp.u.mi.dx = dx
-        inp.u.mi.dy = dy
-        inp.u.mi.mouseData = data
-        inp.u.mi.dwFlags = flags
-        inp.u.mi.time = 0
-        inp.u.mi.dwExtraInfo = 0
-        cls._send_input(1, ctypes.byref(inp), ctypes.sizeof(INPUT))
+        # Fast direct mutation of preallocated ctypes struct without allocation
+        mi = cls._cached_input.u.mi
+        mi.dx = dx
+        mi.dy = dy
+        mi.mouseData = data
+        mi.dwFlags = flags
+        mi.time = 0
+        mi.dwExtraInfo = 0
+        cls._send_input(1, cls._cached_input_ref, cls._input_size)
 
     @classmethod
     def mouse_down(cls, button: str = "left"):
