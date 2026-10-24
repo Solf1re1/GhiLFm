@@ -1,8 +1,10 @@
 import urllib.request
 import json
 import subprocess
-import os
 import sys
+import os
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # 1. Get auth token from git credential manager
 p = subprocess.Popen(['git', 'credential', 'fill'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
@@ -12,15 +14,23 @@ token = creds.get('password')
 if not token:
     raise RuntimeError('No token found')
 
-# 2. Read release notes
-with open('RELEASE_NOTES_v1.0.2.md', 'r', encoding='utf-8') as f:
-    release_body = f.read()
+# 2. Read current version and release notes
+from apex_clicker import __version__
+version = __version__
+tag_name = f"v{version}"
+notes_file = f"RELEASE_NOTES_{tag_name}.md"
+
+if os.path.exists(notes_file):
+    with open(notes_file, 'r', encoding='utf-8') as f:
+        release_body = f.read()
+else:
+    release_body = f"ApexClicker Pro {tag_name}"
 
 # 3. Create Release on GitHub
 payload = {
-    'tag_name': 'v1.0.2',
+    'tag_name': tag_name,
     'target_commitish': 'main',
-    'name': 'ApexClicker Pro v1.0.2 — Tab Navigation Fix & In-App Auto-Updater',
+    'name': f'ApexClicker Pro {tag_name} — In-App Updater Reliability Hotfix',
     'body': release_body,
     'draft': False,
     'prerelease': False
@@ -50,7 +60,7 @@ except urllib.error.HTTPError as e:
     print(f"HTTPError {e.code}: {err_body}")
     # If already exists, fetch it
     req_get = urllib.request.Request(
-        'https://api.github.com/repos/Solf1re1/GhiLFm/releases/tags/v1.0.2',
+        f'https://api.github.com/repos/Solf1re1/GhiLFm/releases/tags/{tag_name}',
         headers={
             'Authorization': f'token {token}',
             'User-Agent': 'ApexClicker-Release-Bot',
@@ -68,7 +78,7 @@ upload_url_base = upload_url_template.split('{')[0]
 # 4. Upload Assets
 assets_to_upload = [
     ('ApexClicker.exe', r'dist\ApexClicker.exe', 'application/vnd.microsoft.portable-executable'),
-    ('ApexClicker-v1.0.2-Instant.zip', r'dist\ApexClicker-v1.0.2-Instant.zip', 'application/zip')
+    (f'ApexClicker-{tag_name}-Instant.zip', rf'dist\ApexClicker-{tag_name}-Instant.zip', 'application/zip')
 ]
 
 for name, filepath, content_type in assets_to_upload:
