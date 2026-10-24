@@ -18,14 +18,36 @@ from apex_clicker.core.hotkey_manager import HotkeyManager
 from apex_clicker.core.input_driver import InputDriver
 
 from apex_clicker.ui.tabs.burst_tab import BurstTab
-from apex_clicker.ui.tabs.sequence_tab import SequenceTab
-from apex_clicker.ui.tabs.humanizer_tab import HumanizerTab
-from apex_clicker.ui.tabs.pixel_tab import PixelTab
-from apex_clicker.ui.tabs.template_tab import TemplateTab
-from apex_clicker.ui.tabs.key_spammer_tab import KeySpammerTab
-from apex_clicker.ui.tabs.macro_tab import MacroTab
-from apex_clicker.ui.tabs.settings_tab import SettingsTab
 from apex_clicker.ui.components.hud_overlay import MiniHudOverlay
+
+
+class LazyPageDict(dict):
+    """Dictionary that lazily instantiates tab views on first access to maximize startup speed."""
+
+    def __init__(self, factories):
+        super().__init__()
+        self.factories = factories
+
+    def __getitem__(self, key):
+        if not dict.__contains__(self, key):
+            if key in self.factories:
+                val = self.factories[key]()
+                dict.__setitem__(self, key, val)
+                return val
+            raise KeyError(key)
+        return dict.__getitem__(self, key)
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def __contains__(self, key):
+        return key in self.factories or dict.__contains__(self, key)
+
+    def is_instantiated(self, key):
+        return dict.__contains__(self, key)
 
 
 class MainWindow(ctk.CTk):
@@ -285,16 +307,16 @@ class MainWindow(ctk.CTk):
         self.content_container.grid_rowconfigure(0, weight=1)
         self.content_container.grid_columnconfigure(0, weight=1)
 
-        # Instantiate All Tab Pages
-        self.pages = {
-            "burst": BurstTab(self.content_container, self.engine),
-            "sequence": SequenceTab(self.content_container, self.engine),
-            "humanizer": HumanizerTab(self.content_container, self.engine),
-            "pixel": PixelTab(self.content_container, self.engine),
-            "template": TemplateTab(self.content_container, self.engine),
-            "keyspam": KeySpammerTab(self.content_container, self.engine),
-            "macro": MacroTab(self.content_container, self.macro_engine),
-            "settings": SettingsTab(
+        # Lazy-Loaded Tab Pages (only instantiates when clicked)
+        self.pages = LazyPageDict({
+            "burst": lambda: BurstTab(self.content_container, self.engine),
+            "sequence": lambda: __import__("apex_clicker.ui.tabs.sequence_tab", fromlist=["SequenceTab"]).SequenceTab(self.content_container, self.engine),
+            "humanizer": lambda: __import__("apex_clicker.ui.tabs.humanizer_tab", fromlist=["HumanizerTab"]).HumanizerTab(self.content_container, self.engine),
+            "pixel": lambda: __import__("apex_clicker.ui.tabs.pixel_tab", fromlist=["PixelTab"]).PixelTab(self.content_container, self.engine),
+            "template": lambda: __import__("apex_clicker.ui.tabs.template_tab", fromlist=["TemplateTab"]).TemplateTab(self.content_container, self.engine),
+            "keyspam": lambda: __import__("apex_clicker.ui.tabs.key_spammer_tab", fromlist=["KeySpammerTab"]).KeySpammerTab(self.content_container, self.engine),
+            "macro": lambda: __import__("apex_clicker.ui.tabs.macro_tab", fromlist=["MacroTab"]).MacroTab(self.content_container, self.macro_engine),
+            "settings": lambda: __import__("apex_clicker.ui.tabs.settings_tab", fromlist=["SettingsTab"]).SettingsTab(
                 self.content_container,
                 self.engine,
                 self.hotkey_mgr,
@@ -302,7 +324,7 @@ class MainWindow(ctk.CTk):
                 on_toggle_topmost=self._toggle_topmost,
                 on_profile_loaded=self._on_profile_loaded,
             ),
-        }
+        })
 
         self.current_page_key = "burst"
         self.show_page("burst")
@@ -405,7 +427,7 @@ class MainWindow(ctk.CTk):
         def _update():
             toggle_key = self.hotkey_mgr.get_hotkey_display("toggle")
             pause_key = self.hotkey_mgr.get_hotkey_display("pause")
-            tpl_page = self.pages.get("template")
+            tpl_page = self.pages["template"] if self.pages.is_instantiated("template") else None
 
             if is_running:
                 # If Visual Bot started and auto-minimize is enabled, minimize window to keep game screen clear
@@ -473,13 +495,19 @@ class MainWindow(ctk.CTk):
         self.attributes("-topmost", topmost)
 
     def _on_profile_loaded(self):
-        self.pages["burst"]._sync_from_config()
-        self.pages["sequence"].points = self.engine.sequence_config.get("points", [])
-        self.pages["sequence"]._refresh_points_list()
-        self.pages["humanizer"]._sync_from_config()
-        self.pages["pixel"]._sync_from_config()
-        self.pages["template"]._sync_from_config()
-        self.pages["keyspam"]._sync_from_config()
+        if self.pages.is_instantiated("burst"):
+            self.pages["burst"]._sync_from_config()
+        if self.pages.is_instantiated("sequence"):
+            self.pages["sequence"].points = self.engine.sequence_config.get("points", [])
+            self.pages["sequence"]._refresh_points_list()
+        if self.pages.is_instantiated("humanizer"):
+            self.pages["humanizer"]._sync_from_config()
+        if self.pages.is_instantiated("pixel"):
+            self.pages["pixel"]._sync_from_config()
+        if self.pages.is_instantiated("template"):
+            self.pages["template"]._sync_from_config()
+        if self.pages.is_instantiated("keyspam"):
+            self.pages["keyspam"]._sync_from_config()
 
     def _on_close(self):
         self.engine.stop()

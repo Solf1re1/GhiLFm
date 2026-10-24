@@ -6,31 +6,45 @@ and calculates accurate center click coordinates.
 
 import os
 from typing import Optional, Tuple, List, Any
-import cv2
-import numpy as np
-import mss
 from PIL import ImageGrab
 from apex_clicker.core.input_driver import InputDriver
 
+cv2: Any = None
+np: Any = None
+mss: Any = None
+
+
+def _ensure_cv():
+    global cv2, np, mss
+    if cv2 is None:
+        import cv2 as _cv2
+        import numpy as _np
+        import mss as _mss
+        cv2 = _cv2
+        np = _np
+        mss = _mss
+
 
 class TemplateMatcher:
-    """Fast screen template matching via mss and OpenCV."""
+    """Fast screen template matching via mss and OpenCV with lazy loading."""
 
     _sct = None
 
     @classmethod
     def _get_sct(cls):
+        _ensure_cv()
         if cls._sct is None:
             cls._sct = mss.mss()
         return cls._sct
 
     @classmethod
-    def capture_fullscreen_bgr(cls, monitor_idx: int = 0) -> Tuple[np.ndarray, int, int]:
+    def capture_fullscreen_bgr(cls, monitor_idx: int = 0) -> Tuple[Any, int, int]:
         """
         Captures monitor as an OpenCV BGR image.
         monitor_idx=0 captures ALL monitors combined across the entire virtual desktop.
         Returns (frame, offset_x, offset_y).
         """
+        _ensure_cv()
         InputDriver.ensure_desktop_access()
         sct = cls._get_sct()
         try:
@@ -92,8 +106,8 @@ class TemplateMatcher:
     @classmethod
     def find_any_template(
         cls,
-        templates: List[Tuple[np.ndarray, float, Any]],
-        screen_bgr: Optional[np.ndarray] = None,
+        templates: List[Tuple[Any, float, Any]],
+        screen_bgr: Optional[Any] = None,
         screen_offset: Tuple[int, int] = (0, 0),
         exclude_rect: Optional[Tuple[int, int, int, int]] = None,
     ) -> Optional[Tuple[int, int, float, Any]]:
@@ -105,6 +119,8 @@ class TemplateMatcher:
         """
         if not templates:
             return None
+
+        _ensure_cv()
 
         best_match = None
         best_score = -1.0
@@ -199,15 +215,17 @@ class TemplateMatcher:
         return best_match
 
     @classmethod
-    def load_template_file(cls, file_path: str) -> Optional[np.ndarray]:
+    def load_template_file(cls, file_path: str) -> Optional[Any]:
         """Loads template image from disk."""
         if not os.path.exists(file_path):
             return None
+        _ensure_cv()
         return cv2.imread(file_path, cv2.IMREAD_COLOR)
 
     @classmethod
     def save_template_crop(cls, file_path: str, x1: int, y1: int, x2: int, y2: int) -> bool:
         """Crops a screen region and saves it as a template."""
+        _ensure_cv()
         screen, _, _ = cls.capture_fullscreen_bgr()
         min_x, max_x = min(x1, x2), max(x1, x2)
         min_y, max_y = min(y1, y2), max(y1, y2)

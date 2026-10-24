@@ -22,9 +22,9 @@ class HotkeyManager:
     """Manages system-wide global hotkeys with modifier key support."""
 
     def __init__(self):
-        # Default hotkey mappings (Win+* toggle requested by user)
+        # Default hotkey mappings (Ctrl+F6 start/stop toggle)
         self.bindings: Dict[str, str] = {
-            "toggle": "win+*",
+            "toggle": "ctrl+f6",
             "pause": "ctrl+f7",
             "pick_coord": "ctrl+f8",
             "sample_pixel": "ctrl+f9",
@@ -69,11 +69,17 @@ class HotkeyManager:
         """
         Rebinds an action to a new key combination.
         e.g. 'ctrl+f6', 'alt+f8', 'f6', 'ctrl+shift+x'
+        Enforces strict uniqueness so no other action shares the same hotkey.
         """
         if action in self.bindings:
             # Clean and canonicalize
             parts = [p.strip().lower() for p in key_name.split("+") if p.strip()]
-            self.bindings[action] = "+".join(parts)
+            new_combo = "+".join(parts)
+            # Ensure no collision with another action
+            for act, existing_combo in list(self.bindings.items()):
+                if act != action and existing_combo == new_combo and new_combo != "":
+                    self.bindings[act] = ""
+            self.bindings[action] = new_combo
 
     def get_hotkey_display(self, action: str) -> str:
         """Returns formatted display string, e.g. 'Ctrl+F6'."""
@@ -185,7 +191,7 @@ class HotkeyManager:
         current_combo = self._build_combination_string(norm_key)
 
         for action, bound_key in self.bindings.items():
-            if current_combo == bound_key or (action == "toggle" and current_combo in ("win+*", "ctrl+f6")):
+            if current_combo == bound_key:
                 # Debounce: prevent repeat storm while key is held down
                 if action not in self._triggered_actions:
                     self._triggered_actions.add(action)

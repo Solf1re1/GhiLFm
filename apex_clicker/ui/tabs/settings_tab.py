@@ -466,6 +466,12 @@ class SettingsTab(ctk.CTkScrollableFrame):
         val = entry_widget.get().strip().lower()
         if val:
             self.hotkey_mgr.set_hotkey(action_id, val)
+            for act, ent in self.hotkey_entries.items():
+                if act != action_id:
+                    cur_disp = self.hotkey_mgr.get_hotkey_display(act)
+                    if ent.get().strip().upper() != cur_disp.upper():
+                        ent.delete(0, "end")
+                        ent.insert(0, cur_disp)
 
     def _on_sound_toggle(self):
         self.engine.sound_enabled = self.sound_var.get()
