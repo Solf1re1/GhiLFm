@@ -127,6 +127,9 @@ class MainWindow(ctk.CTk):
         # Default topmost window
         self.attributes("-topmost", True)
 
+        # Check for updates silently in background 3 seconds after launch
+        self.after(3000, self._silent_update_check)
+
         # Handle close
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -298,7 +301,7 @@ class MainWindow(ctk.CTk):
             height=28,
             width=140,
             corner_radius=6,
-            command=lambda: webbrowser.open_new_tab("https://github.com/Solf1re1/GhiLFm"),
+            command=self._on_check_updates_clicked,
         )
         github_btn.pack(side="right", padx=16, pady=10)
 
@@ -521,3 +524,16 @@ class MainWindow(ctk.CTk):
         self.macro_engine.stop_playback()
         self.hotkey_mgr.stop()
         self.destroy()
+
+    def _on_check_updates_clicked(self):
+        from apex_clicker.ui.components.update_dialog import check_and_prompt_update
+        from apex_clicker import __version__
+        check_and_prompt_update(self, __version__, silent_if_latest=False)
+
+    def _silent_update_check(self):
+        try:
+            from apex_clicker.ui.components.update_dialog import check_and_prompt_update
+            from apex_clicker import __version__
+            check_and_prompt_update(self, __version__, silent_if_latest=True)
+        except Exception:
+            pass

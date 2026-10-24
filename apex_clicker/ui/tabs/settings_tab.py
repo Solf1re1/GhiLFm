@@ -542,5 +542,10 @@ class SettingsTab(ctk.CTkScrollableFrame):
             )
 
     def _check_for_updates(self):
-        import webbrowser
-        webbrowser.open_new_tab("https://github.com/Solf1re1/GhiLFm")
+        try:
+            from apex_clicker.ui.components.update_dialog import check_and_prompt_update
+            from apex_clicker import __version__
+            check_and_prompt_update(self.winfo_toplevel(), __version__, silent_if_latest=False)
+        except Exception:
+            import webbrowser
+            webbrowser.open_new_tab("https://github.com/Solf1re1/GhiLFm/releases")
