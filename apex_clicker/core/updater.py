@@ -142,11 +142,12 @@ class AppUpdater:
     @classmethod
     def apply_update_and_restart(cls, new_binary_path: str):
         """
-        Generates and executes a detached Windows updater script that waits for this process
-        to exit, overwrites the current executable with the new binary, and relaunches the app.
+        Executes a detached PowerShell updater script that terminates running ApexClicker processes,
+        safely replaces the target executable (with rename fallback for OS file lock bypass),
+        cleans up staging files, and relaunches the updated executable.
         """
         if getattr(sys, "frozen", False):
-            target_exe = sys.executable
+            target_exe = os.path.abspath(sys.executable)
         else:
             # Running from source: update C:\moddingtools\ApexClicker.exe or dist\ApexClicker.exe
             if os.path.exists(r"C:\moddingtools\ApexClicker.exe"):
@@ -156,53 +157,66 @@ class AppUpdater:
             else:
                 target_exe = os.path.abspath(sys.argv[0])
 
-        target_pid = os.getpid()
         target_dir = os.path.dirname(os.path.abspath(target_exe))
+        target_pid = os.getpid()
 
-        updater_bat = os.path.join(tempfile.gettempdir(), f"apex_updater_{int(time.time())}.bat")
-        bat_content = f"""@echo off
-set TARGET_PID={target_pid}
-set TARGET_EXE="{target_exe}"
-set NEW_EXE="{new_binary_path}"
-set TARGET_DIR="{target_dir}"
+        ps1_path = os.path.join(tempfile.gettempdir(), f"apex_updater_{int(time.time())}.ps1")
+        ps_script = f"""
+# Step 1: Wait for current process and stop lingering ApexClicker instances
+Start-Sleep -Milliseconds 400
+Get-Process -Name 'ApexClicker' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 600
 
-echo Waiting for ApexClicker process %TARGET_PID% to close...
-:wait_loop
-tasklist /FI "PID eq %TARGET_PID%" 2>NUL | find /I "%TARGET_PID%" >NUL
-if not errorlevel 1 (
-    timeout /t 1 /nobreak >nul
-    goto wait_loop
-)
+# Step 2: Attempt replacement with retries and rename fallback
+$replaced = $false
+for ($i = 0; $i -lt 20; $i++) {{
+    try {{
+        Copy-Item -LiteralPath '{new_binary_path}' -Destination '{target_exe}' -Force -ErrorAction Stop
+        $replaced = $true
+        break
+    }} catch {{
+        try {{
+            $bak = '{target_exe}.old'
+            if (Test-Path -LiteralPath $bak) {{
+                Remove-Item -LiteralPath $bak -Force -ErrorAction SilentlyContinue
+            }}
+            Move-Item -LiteralPath '{target_exe}' -Destination $bak -Force -ErrorAction Stop
+            Copy-Item -LiteralPath '{new_binary_path}' -Destination '{target_exe}' -Force -ErrorAction Stop
+            Remove-Item -LiteralPath $bak -Force -ErrorAction SilentlyContinue
+            $replaced = $true
+            break
+        }} catch {{
+            Start-Sleep -Seconds 1
+        }}
+    }}
+}}
 
-timeout /t 1 /nobreak >nul
+# Step 3: Cleanup and relaunch
+if ($replaced) {{
+    Remove-Item -LiteralPath '{new_binary_path}' -Force -ErrorAction SilentlyContinue
+    Start-Process -FilePath '{target_exe}' -WorkingDirectory '{target_dir}'
+}}
 
-:copy_loop
-echo Copying updated executable...
-copy /Y %NEW_EXE% %TARGET_EXE% >nul 2>&1
-if errorlevel 1 (
-    timeout /t 1 /nobreak >nul
-    goto copy_loop
-)
-
-echo Cleaning up staging file...
-del /F /Q %NEW_EXE% >nul 2>&1
-
-echo Starting updated ApexClicker Pro...
-cd /d %TARGET_DIR%
-start "" %TARGET_EXE%
-
-del "%~f0" >nul 2>&1
-exit
+Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction SilentlyContinue
 """
-        with open(updater_bat, "w", encoding="utf-8") as f:
-            f.write(bat_content)
+        with open(ps1_path, "w", encoding="utf-8") as f:
+            f.write(ps_script)
 
-        # Launch detached updater script
-        DETACHED_PROCESS = 0x00000008
+        # Launch detached PowerShell process with proper non-window flags
+        CREATE_NEW_PROCESS_GROUP = 0x00000200
         CREATE_NO_WINDOW = 0x08000000
         subprocess.Popen(
-            ["cmd.exe", "/c", updater_bat],
-            creationflags=DETACHED_PROCESS | CREATE_NO_WINDOW,
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy", "Bypass",
+                "-WindowStyle", "Hidden",
+                "-File", ps1_path,
+            ],
+            creationflags=CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
             close_fds=True,
         )
 
