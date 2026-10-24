@@ -1,17 +1,17 @@
-# ⚡ ApexClicker Pro • Advanced Automation & Anti-Detection Suite (v1.0.1)
+# ⚡ ApexClicker Pro • Advanced Automation & Anti-Detection Suite (v1.0.2)
 
-[![GitHub Release](https://img.shields.io/badge/Release-v1.0.1-blue.svg)](https://github.com/Solf1re1/GhiLFm/releases)
+[![GitHub Release](https://img.shields.io/badge/Release-v1.0.2-blue.svg)](https://github.com/Solf1re1/GhiLFm/releases)
 [![GitHub Repository](https://img.shields.io/badge/GitHub-Solf1re1%2FGhiLFm-181717.svg?logo=github)](https://github.com/Solf1re1/GhiLFm)
 [![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%7C%2011-0078D6.svg)](https://github.com/Solf1re1/GhiLFm)
 
-ApexClicker Pro is a modern, high-performance desktop auto-clicker engineered for Windows with sub-millisecond precision, native Win32 `SendInput` simulation, intelligent anti-detection algorithms, real-time pixel triggers, dual-engine visual template matching, and a full macro recording studio.
+ApexClicker Pro is a modern, high-performance desktop auto-clicker engineered for Windows with sub-millisecond precision, native Win32 `SendInput` simulation, intelligent anti-detection algorithms, real-time pixel triggers, dual-engine visual template matching, a full macro recording studio, and built-in seamless in-app auto-updating.
 
 ---
 
 ## 📥 Download Standalone Executable
 
 No Python or external libraries required:
-- **Download Executable:** [ApexClicker.exe (v1.0.1 Releases)](https://github.com/Solf1re1/GhiLFm/releases)
+- **Download Executable:** [ApexClicker.exe (v1.0.2 Releases)](https://github.com/Solf1re1/GhiLFm/releases)
 
 ---
 
