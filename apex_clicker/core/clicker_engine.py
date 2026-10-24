@@ -313,9 +313,15 @@ class ClickerEngine:
 
         # Visual click ripple notification
         if self.ripple_enabled and self.on_ripple:
-            self.on_ripple(click_x, click_y)
+            try:
+                self.on_ripple(click_x, click_y)
+            except Exception:
+                pass
 
-        self._record_click()
+        try:
+            self._record_click()
+        except Exception as e:
+            print(f"Error recording click: {e}")
 
     def _check_safety_and_scheduler(self) -> bool:
         """
@@ -392,6 +398,8 @@ class ClickerEngine:
                         interval += 0.20
 
                 precise_sleep(interval)
+        except Exception as e:
+            print(f"Error in burst worker: {e}")
         finally:
             self._is_running = False
             if self.on_status_change:

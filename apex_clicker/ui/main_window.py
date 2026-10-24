@@ -6,6 +6,8 @@ dynamic multi-mode switching, and live performance monitoring.
 
 import os
 import sys
+import time
+import queue
 import webbrowser
 import tkinter as tk
 import customtkinter as ctk
@@ -103,6 +105,11 @@ class MainWindow(ctk.CTk):
         # Mini HUD
         self.hud_window: Optional[MiniHudOverlay] = None
         self._last_ui_update_time = 0.0
+
+        # Thread-safe UI state bridge
+        self._pending_total_clicks = 0
+        self._pending_current_cps = 0.0
+        self._status_queue: queue.SimpleQueue = queue.SimpleQueue()
 
         # Build Sidebar & Pages
         self._build_layout()
@@ -439,68 +446,79 @@ class MainWindow(ctk.CTk):
         self._hotkey_pause()
 
     def _on_engine_status_change(self, is_running: bool, is_paused: bool, message: str):
-        def _update():
-            toggle_key = self.hotkey_mgr.get_hotkey_display("toggle")
-            pause_key = self.hotkey_mgr.get_hotkey_display("pause")
-            tpl_page = self.pages["template"] if self.pages.is_instantiated("template") else None
+        # Thread-safe dispatch via status queue
+        self._status_queue.put((is_running, is_paused, message))
 
-            if is_running:
-                # If Visual Bot started and auto-minimize is enabled, minimize window to keep game screen clear
-                if self.engine.mode == self.engine.MODE_TEMPLATE:
-                    if tpl_page and getattr(tpl_page, "auto_minimize_var", None) and tpl_page.auto_minimize_var.get():
-                        self.iconify()
+    def _apply_status_change(self, is_running: bool, is_paused: bool, message: str):
+        """Applies engine state transitions to UI controls safely on the main Tkinter thread."""
+        toggle_key = self.hotkey_mgr.get_hotkey_display("toggle")
+        pause_key = self.hotkey_mgr.get_hotkey_display("pause")
+        tpl_page = self.pages["template"] if self.pages.is_instantiated("template") else None
 
-                if is_paused:
-                    self.status_badge.configure(text=f"● PAUSED [{pause_key}]", text_color="#f9e2af")
-                    self.pause_btn.configure(text=f"▶️ Resume [{pause_key}]", fg_color="#89b4fa")
-                else:
-                    self.status_badge.configure(text=f"● RUNNING ({self.engine.mode})", text_color="#a6e3a1")
-                    self.pause_btn.configure(text=f"⏸️ Pause [{pause_key}]", fg_color="#313244")
+        if is_running:
+            # If Visual Bot started and auto-minimize is enabled, minimize window to keep game screen clear
+            if self.engine.mode == self.engine.MODE_TEMPLATE:
+                if tpl_page and getattr(tpl_page, "auto_minimize_var", None) and tpl_page.auto_minimize_var.get():
+                    self.iconify()
 
-                self.start_btn.configure(text=f"⏹️ STOP [{toggle_key}]", fg_color="#f38ba8", hover_color="#eba0ac")
+            if is_paused:
+                self.status_badge.configure(text=f"● PAUSED [{pause_key}]", text_color="#f9e2af")
+                self.pause_btn.configure(text=f"▶️ Resume [{pause_key}]", fg_color="#89b4fa")
             else:
-                # Restore window if it was minimized
-                if self.state() == "iconic":
-                    self.deiconify()
-                    self.lift()
-
-                self.status_badge.configure(text=f"● STOPPED [{toggle_key}]", text_color="#f38ba8")
-                self.start_btn.configure(text=f"▶️ START [{toggle_key}]", fg_color="#a6e3a1", hover_color="#94e2d5")
+                self.status_badge.configure(text=f"● RUNNING ({self.engine.mode})", text_color="#a6e3a1")
                 self.pause_btn.configure(text=f"⏸️ Pause [{pause_key}]", fg_color="#313244")
 
-            # Sync Visual Bot tab button state
-            if tpl_page and hasattr(tpl_page, "sync_engine_state"):
-                tpl_page.sync_engine_state(is_running)
+            self.start_btn.configure(text=f"⏹️ STOP [{toggle_key}]", fg_color="#f38ba8", hover_color="#eba0ac")
+        else:
+            # Restore window if it was minimized
+            if self.state() == "iconic":
+                self.deiconify()
+                self.lift()
 
-            if self.hud_window:
-                self.hud_window.update_stats(
-                    is_running, is_paused, self.engine.current_cps, self.engine.total_clicks
-                )
+            self.status_badge.configure(text=f"● STOPPED [{toggle_key}]", text_color="#f38ba8")
+            self.start_btn.configure(text=f"▶️ START [{toggle_key}]", fg_color="#a6e3a1", hover_color="#94e2d5")
+            self.pause_btn.configure(text=f"⏸️ Pause [{pause_key}]", fg_color="#313244")
 
-        self.after(0, _update)
+        # Sync Visual Bot tab button state
+        if tpl_page and hasattr(tpl_page, "sync_engine_state"):
+            tpl_page.sync_engine_state(is_running)
+
+        if self.hud_window:
+            self.hud_window.update_stats(
+                is_running, is_paused, self.engine.current_cps, self.engine.total_clicks
+            )
 
     def _on_engine_click_update(self, total_clicks: int, current_cps: float):
-        now = time.perf_counter()
-        if now - self._last_ui_update_time < 0.033:  # Throttle rendering to ~30 FPS for silky-smooth responsiveness
-            return
-        self._last_ui_update_time = now
-
-        def _update():
-            self.clicks_display.configure(text=f"{total_clicks:,}")
-            self.cps_display.configure(text=f"{int(round(current_cps))} CPS")
-            if self.hud_window:
-                self.hud_window.update_stats(
-                    self.engine.is_running, self.engine.is_paused, current_cps, total_clicks
-                )
-        self.after(0, _update)
+        # Atomic thread-safe stats update polled by main thread loop
+        self._pending_total_clicks = total_clicks
+        self._pending_current_cps = current_cps
 
     def _poll_stats(self):
-        if not self.engine.is_running and self.engine.current_cps > 0:
-            self.engine.current_cps = 0.0
-            self.cps_display.configure(text="0 CPS")
+        """Main-thread polling loop handling UI updates, stats, and thread-safe queues at 30 FPS."""
+        # 1. Process status changes on main thread
+        while not self._status_queue.empty():
+            try:
+                is_running, is_paused, message = self._status_queue.get_nowait()
+                self._apply_status_change(is_running, is_paused, message)
+            except Exception:
+                break
+
+        # 2. Render click and CPS stats on main thread
+        if self.engine.is_running:
+            self.clicks_display.configure(text=f"{self._pending_total_clicks:,}")
+            self.cps_display.configure(text=f"{int(round(self._pending_current_cps))} CPS")
             if self.hud_window:
-                self.hud_window.update_stats(False, False, 0.0, self.engine.total_clicks)
-        self.after(200, self._poll_stats)
+                self.hud_window.update_stats(
+                    True, self.engine.is_paused, self._pending_current_cps, self._pending_total_clicks
+                )
+        else:
+            if self.engine.current_cps > 0:
+                self.engine.current_cps = 0.0
+                self.cps_display.configure(text="0 CPS")
+                if self.hud_window:
+                    self.hud_window.update_stats(False, False, 0.0, self.engine.total_clicks)
+
+        self.after(33, self._poll_stats)
 
     def _toggle_hud_visibility(self, visible: bool):
         if visible:
