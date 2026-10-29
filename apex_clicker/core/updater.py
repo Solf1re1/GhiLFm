@@ -167,7 +167,11 @@ Start-Sleep -Milliseconds 400
 Get-Process -Name 'ApexClicker' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Sleep -Milliseconds 600
 
-# Step 2: Attempt replacement with retries and rename fallback
+# Step 2: Scrub all PyInstaller inheritance flags so bootloader treats relaunch as fresh top-level
+Get-ChildItem env: | Where-Object {{ $_.Name -like "*PYI*" }} | ForEach-Object {{ Remove-Item "env:$($_.Name)" -ErrorAction SilentlyContinue }}
+$env:PYINSTALLER_RESET_ENVIRONMENT = "1"
+
+# Step 3: Attempt replacement with retries and rename fallback
 $replaced = $false
 for ($i = 0; $i -lt 20; $i++) {{
     try {{
@@ -191,9 +195,10 @@ for ($i = 0; $i -lt 20; $i++) {{
     }}
 }}
 
-# Step 3: Cleanup and relaunch
+# Step 4: Cleanup and relaunch with fresh environment
 if ($replaced) {{
     Remove-Item -LiteralPath '{new_binary_path}' -Force -ErrorAction SilentlyContinue
+    $env:PYINSTALLER_RESET_ENVIRONMENT = "1"
     Start-Process -FilePath '{target_exe}' -WorkingDirectory '{target_dir}'
 }}
 
@@ -201,6 +206,13 @@ Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction Silent
 """
         with open(ps1_path, "w", encoding="utf-8") as f:
             f.write(ps_script)
+
+        # Prepare clean environment without PyInstaller internal flags
+        clean_env = os.environ.copy()
+        for k in list(clean_env.keys()):
+            if k.startswith("_PYI_") or k.startswith("PYI_"):
+                del clean_env[k]
+        clean_env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
 
         # Launch detached PowerShell process with proper non-window flags
         CREATE_NEW_PROCESS_GROUP = 0x00000200
@@ -213,6 +225,7 @@ Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force -ErrorAction Silent
                 "-WindowStyle", "Hidden",
                 "-File", ps1_path,
             ],
+            env=clean_env,
             creationflags=CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,

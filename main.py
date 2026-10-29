@@ -14,6 +14,10 @@ from apex_clicker.core.input_driver import HighPrecisionTimer
 
 
 def main():
+    # Clear one-time bootloader reset flag if present
+    if "PYINSTALLER_RESET_ENVIRONMENT" in os.environ:
+        del os.environ["PYINSTALLER_RESET_ENVIRONMENT"]
+
     # Enable high-resolution Windows multimedia timer (1ms granularity)
     HighPrecisionTimer.enable()
 
@@ -26,4 +30,6 @@ def main():
 
 
 if __name__ == "__main__":
+    import multiprocessing
+    multiprocessing.freeze_support()
     main()

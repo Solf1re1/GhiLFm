@@ -30,7 +30,7 @@ else:
 payload = {
     'tag_name': tag_name,
     'target_commitish': 'main',
-    'name': f'ApexClicker Pro {tag_name} — Macro Studio Loop Fix & Hotkey Sanitization',
+    'name': f'ApexClicker Pro {tag_name} — In-App Restart & PyInstaller Bootloader Fix',
     'body': release_body,
     'draft': False,
     'prerelease': False
