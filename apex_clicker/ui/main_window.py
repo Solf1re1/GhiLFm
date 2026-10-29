@@ -424,6 +424,7 @@ class MainWindow(ctk.CTk):
 
     def _setup_hotkeys(self):
         """Binds system-wide global hotkeys with Hold vs Toggle support."""
+        self.macro_engine.set_stop_hotkey(self.hotkey_mgr.bindings.get("macro_toggle", "ctrl+f10"))
         self.hotkey_mgr.set_callback("toggle", self._hotkey_toggle_press)
         self.hotkey_mgr.set_release_callback("toggle", self._hotkey_toggle_release)
         self.hotkey_mgr.set_callback("pause", self._hotkey_pause)
@@ -463,6 +464,9 @@ class MainWindow(ctk.CTk):
             self.engine.stop()
 
     def _hotkey_pause(self):
+        if self.macro_engine.is_playing:
+            self.macro_engine.stop_playback()
+            return
         self.engine.toggle_pause()
 
     def _hotkey_pick_coord(self):
@@ -476,6 +480,8 @@ class MainWindow(ctk.CTk):
         self.after(0, self.pages["pixel"].sample_current_cursor)
 
     def _hotkey_macro_toggle(self):
+        if self.macro_engine.is_playing:
+            return
         self.after(0, self.pages["macro"]._toggle_recording)
 
     def _on_paste_event(self, event=None):

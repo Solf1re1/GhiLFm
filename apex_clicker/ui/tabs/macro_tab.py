@@ -152,6 +152,8 @@ class MacroTab(ctk.CTkScrollableFrame):
         ctk.CTkLabel(loop_row, text="(0 = infinite)", font=ctk.CTkFont(size=11), text_color="#6c7086").pack(side="left")
 
     def _toggle_recording(self):
+        if self.macro_engine.is_playing:
+            return
         if self.macro_engine.is_recording:
             self.macro_engine.stop_recording()
         else:

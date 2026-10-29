@@ -57,6 +57,7 @@ class MacroEngine:
         self._keyboard_controller = keyboard.Controller()
 
         self._playback_thread: Optional[threading.Thread] = None
+        self.stop_hotkey: str = "ctrl+f10"
 
         # Callbacks
         self.on_record_event: Optional[Callable[[int], None]] = None
@@ -69,6 +70,72 @@ class MacroEngine:
     @property
     def is_playing(self) -> bool:
         return self._is_playing
+
+    def set_stop_hotkey(self, combo_str: str):
+        """Sets the hotkey string to filter out during recording (e.g. 'ctrl+f10')."""
+        self.stop_hotkey = combo_str.lower().strip()
+
+    def _is_hotkey_trigger_key(self, key: Any) -> bool:
+        """Determines if a key is the primary trigger (F10) for macro recording toggle."""
+        try:
+            if isinstance(key, keyboard.Key):
+                name = key.name.lower()
+                if name == "f10":
+                    return True
+                parts = self.stop_hotkey.split("+")
+                if len(parts) > 0 and name == parts[-1]:
+                    return True
+            elif isinstance(key, keyboard.KeyCode):
+                if key.vk == 121:  # VK_F10
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def _sanitize_events_list(self, evs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Cleans macro events list:
+        1. Strips leading release events of modifiers/hotkey keys (user lifting fingers after starting).
+        2. Strips trailing key press/release events of modifiers/hotkey keys (user pressing Ctrl+F10 to stop).
+        3. Strips any stray F10 keystrokes anywhere in the macro.
+        """
+        if not evs:
+            return []
+
+        def is_macro_hotkey_part(event):
+            if event.get("kind") not in ("key_press", "key_release"):
+                return False
+            k = event.get("key", {})
+            name = (k.get("name") or "").lower()
+            vk = k.get("vk")
+            if name in ("f10", "ctrl", "ctrl_l", "ctrl_r", "menu", "alt", "alt_l", "alt_r", "shift", "shift_l", "shift_r", "cmd", "cmd_l", "cmd_r"):
+                return True
+            if vk == 121:
+                return True
+            return False
+
+        # 1. Remove leading key releases of modifiers/trigger
+        start_idx = 0
+        while start_idx < len(evs) and evs[start_idx].get("kind") == "key_release" and is_macro_hotkey_part(evs[start_idx]):
+            start_idx += 1
+        cleaned = list(evs[start_idx:])
+
+        # 2. Remove trailing key presses/releases of modifiers/trigger
+        while cleaned and is_macro_hotkey_part(cleaned[-1]):
+            cleaned.pop()
+
+        # 3. Filter out any internal F10 events
+        final_events = []
+        for e in cleaned:
+            if e.get("kind") in ("key_press", "key_release"):
+                k = e.get("key", {})
+                name = (k.get("name") or "").lower()
+                vk = k.get("vk")
+                if name == "f10" or vk == 121:
+                    continue
+            final_events.append(e)
+
+        return final_events
 
     def start_recording(self, record_mouse_moves: bool = False):
         """Starts capturing mouse and keyboard events."""
@@ -128,6 +195,9 @@ class MacroEngine:
         def on_key_press(key):
             if not self._is_recording:
                 return
+            # Filter out F10/stop hotkey so it is never recorded into macro
+            if self._is_hotkey_trigger_key(key):
+                return
             now = time.perf_counter()
             dt = now - self._last_event_time
             self._last_event_time = now
@@ -143,6 +213,9 @@ class MacroEngine:
 
         def on_key_release(key):
             if not self._is_recording:
+                return
+            # Filter out F10/stop hotkey release
+            if self._is_hotkey_trigger_key(key):
                 return
             now = time.perf_counter()
             dt = now - self._last_event_time
@@ -174,7 +247,7 @@ class MacroEngine:
             self.on_state_change(self._is_recording, self._is_playing)
 
     def stop_recording(self):
-        """Stops the recording session."""
+        """Stops the recording session and cleans modifier/hotkey artifacts."""
         if not self._is_recording:
             return
 
@@ -193,6 +266,11 @@ class MacroEngine:
                 pass
             self._keyboard_listener = None
 
+        # Sanitize trailing hotkey events (e.g. Ctrl pressed when hitting Ctrl+F10 to stop)
+        self.events = self._sanitize_events_list(self.events)
+        if self.on_record_event:
+            self.on_record_event(len(self.events))
+
         if self.on_state_change:
             self.on_state_change(self._is_recording, self._is_playing)
 
@@ -204,6 +282,11 @@ class MacroEngine:
     ):
         """Plays recorded macro events in a background thread."""
         if self._is_playing or self._is_recording or not self.events:
+            return
+
+        # Sanitize prior to playback to ensure no trailing toggle hotkeys exist
+        self.events = self._sanitize_events_list(self.events)
+        if not self.events:
             return
 
         self._is_playing = True
@@ -274,6 +357,7 @@ class MacroEngine:
                         break
             finally:
                 self._is_playing = False
+                time.sleep(0.150)  # Grace period so simulated keys don't trigger hotkeys
                 if self.on_state_change:
                     self.on_state_change(self._is_recording, self._is_playing)
                 if on_complete:
@@ -298,6 +382,7 @@ class MacroEngine:
 
     def save_to_file(self, file_path: str):
         """Saves current macro events to a JSON file."""
+        self.events = self._sanitize_events_list(self.events)
         data = {
             "version": "1.0",
             "event_count": len(self.events),
@@ -307,7 +392,7 @@ class MacroEngine:
             json.dump(data, f, indent=2)
 
     def load_from_file(self, file_path: str):
-        """Loads macro events from a JSON file."""
+        """Loads macro events from a JSON file and removes any hotkey artifacts."""
         with open(file_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        self.events = data.get("events", [])
+        self.events = self._sanitize_events_list(data.get("events", []))
