@@ -305,6 +305,18 @@ class MainWindow(ctk.CTk):
         )
         self.page_title_label.pack(side="left", padx=16, pady=10)
 
+        self.armed_mode_label = ctk.CTkLabel(
+            header_banner,
+            text="Mode: ⚡ Burst Clicker",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            text_color="#a6e3a1",
+            fg_color="#1e1e2e",
+            corner_radius=6,
+            padx=8,
+            pady=3,
+        )
+        self.armed_mode_label.pack(side="left", padx=10, pady=10)
+
         github_btn = ctk.CTkButton(
             header_banner,
             text="🌐 Check for Updates",
@@ -345,14 +357,41 @@ class MainWindow(ctk.CTk):
         })
 
         self.current_page_key = "burst"
+        self.active_execution_mode = "burst"
         self.show_page("burst")
 
+    def _update_armed_mode_display(self):
+        """Updates header badge displaying the current operational engine mode."""
+        mode_names = {
+            self.engine.MODE_BURST: "⚡ Burst Clicker",
+            self.engine.MODE_SEQUENCE: "🎯 Multi-Point Sequence",
+            self.engine.MODE_PIXEL: "👁️ Pixel Trigger",
+            self.engine.MODE_TEMPLATE: "🖼️ Visual Bot",
+            self.engine.MODE_KEYSPAM: "⌨️ Key Spammer",
+        }
+        name = mode_names.get(self.engine.mode, self.engine.mode)
+        if hasattr(self, "armed_mode_label"):
+            self.armed_mode_label.configure(text=f"Mode: {name}")
+
     def show_page(self, page_key: str):
-        """Switches active page in the content area."""
+        """Switches active page in the content area without breaking execution mode."""
         if page_key not in self.pages:
             return
 
         self.current_page_key = page_key
+
+        # Update primary execution mode if user navigated to an execution tab
+        execution_modes = {
+            "burst": self.engine.MODE_BURST,
+            "sequence": self.engine.MODE_SEQUENCE,
+            "pixel": self.engine.MODE_PIXEL,
+            "template": self.engine.MODE_TEMPLATE,
+            "keyspam": self.engine.MODE_KEYSPAM,
+        }
+        if page_key in execution_modes:
+            self.active_execution_mode = page_key
+            self.engine.mode = execution_modes[page_key]
+        self._update_armed_mode_display()
 
         # Update sidebar button highlighting
         for k, btn in self.nav_buttons.items():
@@ -373,6 +412,12 @@ class MainWindow(ctk.CTk):
                 p.pack_forget()
 
             target_page = self.pages[page_key]
+            # Synchronize state if tab supports sync
+            if hasattr(target_page, "_sync_from_engine"):
+                try:
+                    target_page._sync_from_engine()
+                except Exception:
+                    pass
             target_page.pack(fill="both", expand=True)
         except Exception as e:
             print(f"Error loading tab '{page_key}': {e}")
@@ -388,17 +433,20 @@ class MainWindow(ctk.CTk):
         self.hotkey_mgr.start()
 
     def _activate_mode_from_page(self):
-        """Maps active sidebar page to engine operational mode."""
-        if self.current_page_key == "sequence":
-            self.engine.mode = self.engine.MODE_SEQUENCE
-        elif self.current_page_key == "pixel":
-            self.engine.mode = self.engine.MODE_PIXEL
-        elif self.current_page_key == "template":
-            self.engine.mode = self.engine.MODE_TEMPLATE
-        elif self.current_page_key == "keyspam":
-            self.engine.mode = self.engine.MODE_KEYSPAM
-        else:
-            self.engine.mode = self.engine.MODE_BURST
+        """Maps active sidebar page to engine operational mode preserving non-execution modules."""
+        execution_modes = {
+            "burst": self.engine.MODE_BURST,
+            "sequence": self.engine.MODE_SEQUENCE,
+            "pixel": self.engine.MODE_PIXEL,
+            "template": self.engine.MODE_TEMPLATE,
+            "keyspam": self.engine.MODE_KEYSPAM,
+        }
+        if self.current_page_key in execution_modes:
+            self.active_execution_mode = self.current_page_key
+            self.engine.mode = execution_modes[self.current_page_key]
+        elif hasattr(self, "active_execution_mode") and self.active_execution_mode in execution_modes:
+            self.engine.mode = execution_modes[self.active_execution_mode]
+        self._update_armed_mode_display()
 
     def _hotkey_toggle_press(self):
         if self.engine.hotkey_mode == "HOLD":
@@ -420,7 +468,7 @@ class MainWindow(ctk.CTk):
     def _hotkey_pick_coord(self):
         x, y = InputDriver.get_cursor_pos()
         if self.current_page_key == "sequence":
-            self.after(0, self.pages["sequence"].add_current_cursor_point)
+            self.after(0, lambda: self.pages["sequence"].add_current_cursor_point(x, y))
         else:
             self.after(0, lambda: self.pages["burst"].set_coordinate(x, y))
 

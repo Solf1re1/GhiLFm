@@ -305,8 +305,8 @@ class InputDriver:
         else:
             cls.set_cursor_pos(x, y)
 
-        # 50ms pause for OS & target window hover/focus dispatch
-        time.sleep(0.050)
+        # 40ms pause for OS & target window hover/focus dispatch
+        time.sleep(0.040)
 
         # Re-assert exact position prior to click
         cls.set_cursor_pos(x, y)
@@ -320,12 +320,19 @@ class InputDriver:
             cls.click("right", hold_time=hold_time)
         elif b == "middle":
             cls.click("middle", hold_time=hold_time)
+        elif b == "scroll_up":
+            cls.scroll(1)
+        elif b == "scroll_down":
+            cls.scroll(-1)
+        elif b == "hold_left":
+            cls.mouse_down("left")
         else:
             cls.click("left", hold_time=hold_time)
-        time.sleep(0.025)  # 25ms post-click buffer
+        time.sleep(0.020)  # 20ms post-click buffer
 
     @classmethod
     def _send_mouse_event(cls, flags: int, data: int = 0, dx: int = 0, dy: int = 0):
+        cls.ensure_desktop_access()
         # Fast direct mutation of preallocated ctypes struct without allocation
         mi = cls._cached_input.u.mi
         mi.dx = dx
@@ -338,6 +345,7 @@ class InputDriver:
 
     @classmethod
     def mouse_down(cls, button: str = "left"):
+        cls.ensure_desktop_access()
         b = button.lower()
         if b == "left":
             cls._send_mouse_event(MOUSEEVENTF_LEFTDOWN)
@@ -348,6 +356,7 @@ class InputDriver:
 
     @classmethod
     def mouse_up(cls, button: str = "left"):
+        cls.ensure_desktop_access()
         b = button.lower()
         if b == "left":
             cls._send_mouse_event(MOUSEEVENTF_LEFTUP)

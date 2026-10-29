@@ -434,29 +434,33 @@ class ClickerEngine:
                     while not self._check_safety_and_scheduler() and not self._stop_event.is_set():
                         precise_sleep(0.04)
 
-                    tx = pt.get("x", 0)
-                    ty = pt.get("y", 0)
+                    tx = int(pt.get("x", 0))
+                    ty = int(pt.get("y", 0))
                     btn = pt.get("button", "left")
-                    delay = max(0.001, pt.get("delay", 0.1))
-                    jitter_rad = pt.get("jitter_radius", 0)
-                    smooth = pt.get("smooth_move", False)
-                    move_dur = pt.get("move_duration", 0.25)
+                    delay = max(0.001, float(pt.get("delay", 0.1)))
+                    jitter_rad = int(pt.get("jitter_radius", 0))
+                    smooth = bool(pt.get("smooth_move", False))
+                    move_dur = float(pt.get("move_duration", 0.25))
 
-                    if human_enabled and jitter_rad > 0:
-                        tx, ty = Humanizer.get_jittered_point(tx, ty, jitter_rad)
-
-                    if smooth:
-                        Humanizer.move_smoothly(
-                            tx,
-                            ty,
-                            duration=move_dur,
-                            overshoot=human_enabled,
-                            cancel_check=lambda: self._stop_event.is_set(),
-                        )
+                    # Anti-detection handling:
+                    # If Anti-Detection is OFF (Machine Precision):
+                    # Direct instant snap to (tx, ty), ZERO jitter, ZERO bezier sway, exact pixel clicking.
+                    # If Anti-Detection is ON:
+                    # Natural human bezier curve travel + gaussian jitter dispersion.
+                    if human_enabled:
+                        if jitter_rad > 0:
+                            tx, ty = Humanizer.get_jittered_point(tx, ty, jitter_rad)
+                        use_smooth = smooth
                     else:
-                        InputDriver.set_cursor_pos(tx, ty)
+                        use_smooth = False
 
-                    self._execute_click(btn)
+                    self._execute_click(
+                        button=btn,
+                        x=tx,
+                        y=ty,
+                        smooth=use_smooth,
+                        duration=move_dur if use_smooth else 0.0,
+                    )
 
                     if human_enabled:
                         delay = Humanizer.get_randomized_delay(delay, 0.20)
@@ -466,6 +470,8 @@ class ClickerEngine:
                 loops_done += 1
                 if repeat_count > 0 and loops_done >= repeat_count:
                     break
+        except Exception as e:
+            print(f"Error in sequence worker: {e}")
         finally:
             self._is_running = False
             if self.on_status_change:

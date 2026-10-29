@@ -174,6 +174,9 @@ class HumanizerTab(ctk.CTkScrollableFrame):
         )
         self.anti_detect_status.pack(padx=10, pady=8)
 
+    def _sync_from_engine(self):
+        self._sync_from_config()
+
     def _sync_from_config(self):
         bcfg = self.engine.burst_config
         active = bcfg.get("humanizer_enabled", False)
