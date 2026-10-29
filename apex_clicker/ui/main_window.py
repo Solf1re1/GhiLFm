@@ -100,6 +100,7 @@ class MainWindow(ctk.CTk):
         # Core Engines
         self.engine = ClickerEngine()
         self.macro_engine = MacroEngine()
+        self.macro_engine.add_state_listener(self._on_macro_state_change)
         self.hotkey_mgr = HotkeyManager()
 
         # Mini HUD
@@ -345,7 +346,12 @@ class MainWindow(ctk.CTk):
             "pixel": lambda: PixelTab(self.content_container, self.engine),
             "template": lambda: TemplateTab(self.content_container, self.engine),
             "keyspam": lambda: KeySpammerTab(self.content_container, self.engine),
-            "macro": lambda: MacroTab(self.content_container, self.macro_engine),
+            "macro": lambda: MacroTab(
+                self.content_container,
+                self.macro_engine,
+                self.hotkey_mgr,
+                on_toggle_playback=self._toggle_macro_playback,
+            ),
             "settings": lambda: SettingsTab(
                 self.content_container,
                 self.engine,
@@ -368,8 +374,12 @@ class MainWindow(ctk.CTk):
             self.engine.MODE_PIXEL: "👁️ Pixel Trigger",
             self.engine.MODE_TEMPLATE: "🖼️ Visual Bot",
             self.engine.MODE_KEYSPAM: "⌨️ Key Spammer",
+            "macro": "🎬 Macro Studio",
         }
-        name = mode_names.get(self.engine.mode, self.engine.mode)
+        if getattr(self, "active_execution_mode", "") == "macro":
+            name = "🎬 Macro Studio"
+        else:
+            name = mode_names.get(self.engine.mode, self.engine.mode)
         if hasattr(self, "armed_mode_label"):
             self.armed_mode_label.configure(text=f"Mode: {name}")
 
@@ -387,10 +397,12 @@ class MainWindow(ctk.CTk):
             "pixel": self.engine.MODE_PIXEL,
             "template": self.engine.MODE_TEMPLATE,
             "keyspam": self.engine.MODE_KEYSPAM,
+            "macro": "macro",
         }
         if page_key in execution_modes:
             self.active_execution_mode = page_key
-            self.engine.mode = execution_modes[page_key]
+            if page_key != "macro":
+                self.engine.mode = execution_modes[page_key]
         self._update_armed_mode_display()
 
         # Update sidebar button highlighting
@@ -441,27 +453,88 @@ class MainWindow(ctk.CTk):
             "pixel": self.engine.MODE_PIXEL,
             "template": self.engine.MODE_TEMPLATE,
             "keyspam": self.engine.MODE_KEYSPAM,
+            "macro": "macro",
         }
         if self.current_page_key in execution_modes:
             self.active_execution_mode = self.current_page_key
-            self.engine.mode = execution_modes[self.current_page_key]
+            if self.current_page_key != "macro":
+                self.engine.mode = execution_modes[self.current_page_key]
         elif hasattr(self, "active_execution_mode") and self.active_execution_mode in execution_modes:
-            self.engine.mode = execution_modes[self.active_execution_mode]
+            if self.active_execution_mode != "macro":
+                self.engine.mode = execution_modes[self.active_execution_mode]
         self._update_armed_mode_display()
+
+    def _toggle_macro_playback(self):
+        """Starts or stops macro playback from master hotkey or start button."""
+        if self.macro_engine.is_playing:
+            self.macro_engine.stop_playback()
+            return
+
+        if not self.macro_engine.events:
+            macro_key = self.hotkey_mgr.get_hotkey_display("macro_toggle")
+            self.status_badge.configure(text=f"● NO MACRO (Press {macro_key} to Record)", text_color="#f9e2af")
+            return
+
+        # Ensure ClickEngine is not running
+        if self.engine.is_running:
+            self.engine.stop()
+
+        speed = 1.0
+        loops = 1
+        if self.pages.is_instantiated("macro"):
+            macro_page = self.pages["macro"]
+            try:
+                speed = float(macro_page.speed_slider.get())
+            except Exception:
+                pass
+            try:
+                loops = int(macro_page.loop_entry.get().strip() or "1")
+            except Exception:
+                pass
+
+        self.macro_engine.start_playback(speed_multiplier=speed, repeat_count=loops)
+
+    def _handle_master_toggle(self):
+        """Master execution toggle handling both ClickEngine and MacroEngine."""
+        # 1. If macro is currently playing, ALWAYS stop it on toggle! Never start clicker!
+        if self.macro_engine.is_playing:
+            self.macro_engine.stop_playback()
+            return
+
+        # 2. If macro is currently recording, stop it! Never start clicker!
+        if self.macro_engine.is_recording:
+            self.macro_engine.stop_recording()
+            return
+
+        # 3. If clicker engine is currently running, stop it!
+        if self.engine.is_running:
+            self.engine.stop()
+            return
+
+        # 4. Neither is running -> Start the armed mode
+        self._activate_mode_from_page()
+        if self.active_execution_mode == "macro":
+            self._toggle_macro_playback()
+        else:
+            self.engine.start()
 
     def _hotkey_toggle_press(self):
         if self.engine.hotkey_mode == "HOLD":
-            if not self.engine.is_running:
+            if not self.engine.is_running and not self.macro_engine.is_playing:
                 self._activate_mode_from_page()
-                self.engine.start()
+                if self.active_execution_mode == "macro":
+                    self._toggle_macro_playback()
+                else:
+                    self.engine.start()
         else:
-            if not self.engine.is_running:
-                self._activate_mode_from_page()
-            self.engine.toggle()
+            self._handle_master_toggle()
 
     def _hotkey_toggle_release(self):
-        if self.engine.hotkey_mode == "HOLD" and self.engine.is_running:
-            self.engine.stop()
+        if self.engine.hotkey_mode == "HOLD":
+            if self.macro_engine.is_playing:
+                self.macro_engine.stop_playback()
+            if self.engine.is_running:
+                self.engine.stop()
 
     def _hotkey_pause(self):
         if self.macro_engine.is_playing:
@@ -482,6 +555,8 @@ class MainWindow(ctk.CTk):
     def _hotkey_macro_toggle(self):
         if self.macro_engine.is_playing:
             return
+        if self.engine.is_running:
+            self.engine.stop()
         self.after(0, self.pages["macro"]._toggle_recording)
 
     def _on_paste_event(self, event=None):
@@ -492,12 +567,31 @@ class MainWindow(ctk.CTk):
             self.pages["template"]._import_from_clipboard()
 
     def _on_start_clicked(self):
-        if not self.engine.is_running:
-            self._activate_mode_from_page()
-        self.engine.toggle()
+        self._handle_master_toggle()
 
     def _on_pause_clicked(self):
         self._hotkey_pause()
+
+    def _on_macro_state_change(self, is_recording: bool, is_playing: bool):
+        self.after(0, lambda: self._apply_macro_state_change(is_recording, is_playing))
+
+    def _apply_macro_state_change(self, is_recording: bool, is_playing: bool):
+        toggle_key = self.hotkey_mgr.get_hotkey_display("toggle")
+        macro_key = self.hotkey_mgr.get_hotkey_display("macro_toggle")
+        if is_playing:
+            self.status_badge.configure(text="● RUNNING (MACRO)", text_color="#a6e3a1")
+            self.start_btn.configure(text=f"⏹️ STOP [{toggle_key}]", fg_color="#f38ba8", hover_color="#eba0ac")
+            if self.hud_window:
+                self.hud_window.update_stats(True, False, 0.0, len(self.macro_engine.events))
+        elif is_recording:
+            self.status_badge.configure(text=f"● RECORDING [{macro_key}]", text_color="#f38ba8")
+            self.start_btn.configure(text=f"⏹️ STOP [{macro_key}]", fg_color="#f38ba8", hover_color="#eba0ac")
+        else:
+            if not self.engine.is_running:
+                self.status_badge.configure(text=f"● STOPPED [{toggle_key}]", text_color="#f38ba8")
+                self.start_btn.configure(text=f"▶️ START [{toggle_key}]", fg_color="#a6e3a1", hover_color="#94e2d5")
+                if self.hud_window:
+                    self.hud_window.update_stats(False, False, 0.0, self.engine.total_clicks)
 
     def _on_engine_status_change(self, is_running: bool, is_paused: bool, message: str):
         # Thread-safe dispatch via status queue

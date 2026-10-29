@@ -6,23 +6,43 @@ playback speed scaling, looping, and JSON import/export.
 
 import customtkinter as ctk
 from tkinter import filedialog
-from typing import Optional
+from typing import Optional, Callable, Any
 from apex_clicker.core.macro_recorder import MacroEngine
 
 
 class MacroTab(ctk.CTkScrollableFrame):
     """Tab for macro recording and playback orchestration."""
 
-    def __init__(self, master, macro_engine: MacroEngine):
+    def __init__(
+        self,
+        master,
+        macro_engine: MacroEngine,
+        hotkey_mgr: Optional[Any] = None,
+        on_toggle_playback: Optional[Callable[[], None]] = None,
+    ):
         super().__init__(master, fg_color="transparent")
         self.macro_engine = macro_engine
+        self.hotkey_mgr = hotkey_mgr
+        self.on_toggle_playback = on_toggle_playback
 
         self._build_ui()
         self.macro_engine.on_record_event = self._on_record_count_update
-        self.macro_engine.on_state_change = self._on_state_change
+        self.macro_engine.add_state_listener(self._on_state_change)
+
+    def _sync_from_engine(self):
+        """Synchronize dynamic hotkey bindings onto buttons."""
+        toggle_key = self.hotkey_mgr.get_hotkey_display("toggle") if self.hotkey_mgr else "Ctrl+F6"
+        macro_key = self.hotkey_mgr.get_hotkey_display("macro_toggle") if self.hotkey_mgr else "Ctrl+F10"
+        if not self.macro_engine.is_recording:
+            self.record_btn.configure(text=f"⏺️ Start Recording [{macro_key}]")
+        if not self.macro_engine.is_playing:
+            self.play_btn.configure(text=f"▶️ Play Macro [{toggle_key}]")
 
     def _build_ui(self):
         self.grid_columnconfigure((0, 1), weight=1, uniform="macro_col")
+
+        toggle_key = self.hotkey_mgr.get_hotkey_display("toggle") if self.hotkey_mgr else "Ctrl+F6"
+        macro_key = self.hotkey_mgr.get_hotkey_display("macro_toggle") if self.hotkey_mgr else "Ctrl+F10"
 
         # --- LEFT CARD: Recording Studio ---
         rec_card = ctk.CTkFrame(self, fg_color="#181825", corner_radius=10, border_width=1, border_color="#313244")
@@ -38,7 +58,7 @@ class MacroTab(ctk.CTkScrollableFrame):
         # Record Button
         self.record_btn = ctk.CTkButton(
             rec_card,
-            text="⏺️ Start Recording [Ctrl+F10]",
+            text=f"⏺️ Start Recording [{macro_key}]",
             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
             fg_color="#f38ba8",
             text_color="#11111b",
@@ -114,7 +134,7 @@ class MacroTab(ctk.CTkScrollableFrame):
         # Play Button
         self.play_btn = ctk.CTkButton(
             play_card,
-            text="▶️ Play Macro",
+            text=f"▶️ Play Macro [{toggle_key}]",
             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
             fg_color="#a6e3a1",
             text_color="#11111b",
@@ -160,15 +180,18 @@ class MacroTab(ctk.CTkScrollableFrame):
             self.macro_engine.start_recording(record_mouse_moves=self.track_moves_var.get())
 
     def _toggle_playback(self):
-        if self.macro_engine.is_playing:
-            self.macro_engine.stop_playback()
+        if self.on_toggle_playback:
+            self.on_toggle_playback()
         else:
-            speed = float(self.speed_slider.get())
-            try:
-                loops = int(self.loop_entry.get().strip() or "1")
-            except ValueError:
-                loops = 1
-            self.macro_engine.start_playback(speed_multiplier=speed, repeat_count=loops)
+            if self.macro_engine.is_playing:
+                self.macro_engine.stop_playback()
+            else:
+                speed = float(self.speed_slider.get())
+                try:
+                    loops = int(self.loop_entry.get().strip() or "1")
+                except ValueError:
+                    loops = 1
+                self.macro_engine.start_playback(speed_multiplier=speed, repeat_count=loops)
 
     def _on_speed_slider_changed(self, value):
         val = round(value, 2)
@@ -178,19 +201,21 @@ class MacroTab(ctk.CTkScrollableFrame):
         self.after(0, lambda: self.event_count_label.configure(text=f"Recorded Events: {count:,}"))
 
     def _on_state_change(self, is_recording: bool, is_playing: bool):
+        toggle_key = self.hotkey_mgr.get_hotkey_display("toggle") if self.hotkey_mgr else "Ctrl+F6"
+        macro_key = self.hotkey_mgr.get_hotkey_display("macro_toggle") if self.hotkey_mgr else "Ctrl+F10"
         def _update():
             if is_recording:
-                self.record_btn.configure(text="⏹️ Stop Recording [Ctrl+F10]", fg_color="#f38ba8")
+                self.record_btn.configure(text=f"⏹️ Stop Recording [{macro_key}]", fg_color="#f38ba8")
                 self.play_btn.configure(state="disabled")
             else:
-                self.record_btn.configure(text="⏺️ Start Recording [Ctrl+F10]", fg_color="#f38ba8")
+                self.record_btn.configure(text=f"⏺️ Start Recording [{macro_key}]", fg_color="#f38ba8")
                 self.play_btn.configure(state="normal")
 
             if is_playing:
-                self.play_btn.configure(text="⏹️ Stop Playback", fg_color="#f38ba8")
+                self.play_btn.configure(text=f"⏹️ Stop Playback [{toggle_key}]", fg_color="#f38ba8")
                 self.record_btn.configure(state="disabled")
             else:
-                self.play_btn.configure(text="▶️ Play Macro", fg_color="#a6e3a1")
+                self.play_btn.configure(text=f"▶️ Play Macro [{toggle_key}]", fg_color="#a6e3a1")
                 self.record_btn.configure(state="normal")
         self.after(0, _update)
 

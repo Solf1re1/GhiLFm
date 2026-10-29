@@ -61,7 +61,34 @@ class MacroEngine:
 
         # Callbacks
         self.on_record_event: Optional[Callable[[int], None]] = None
-        self.on_state_change: Optional[Callable[[bool, bool], None]] = None
+        self._state_listeners: List[Callable[[bool, bool], None]] = []
+
+    def add_state_listener(self, cb: Callable[[bool, bool], None]):
+        """Registers a listener for recording/playback state changes."""
+        if cb not in self._state_listeners:
+            self._state_listeners.append(cb)
+
+    def remove_state_listener(self, cb: Callable[[bool, bool], None]):
+        """Removes a listener for recording/playback state changes."""
+        if cb in self._state_listeners:
+            self._state_listeners.remove(cb)
+
+    def _notify_state_change(self):
+        """Notifies all registered state change listeners safely."""
+        for cb in list(self._state_listeners):
+            try:
+                cb(self._is_recording, self._is_playing)
+            except Exception:
+                pass
+
+    @property
+    def on_state_change(self) -> Optional[Callable[[bool, bool], None]]:
+        return None
+
+    @on_state_change.setter
+    def on_state_change(self, cb: Optional[Callable[[bool, bool], None]]):
+        if cb:
+            self.add_state_listener(cb)
 
     @property
     def is_recording(self) -> bool:
@@ -243,8 +270,7 @@ class MacroEngine:
         self._mouse_listener.start()
         self._keyboard_listener.start()
 
-        if self.on_state_change:
-            self.on_state_change(self._is_recording, self._is_playing)
+        self._notify_state_change()
 
     def stop_recording(self):
         """Stops the recording session and cleans modifier/hotkey artifacts."""
@@ -271,8 +297,7 @@ class MacroEngine:
         if self.on_record_event:
             self.on_record_event(len(self.events))
 
-        if self.on_state_change:
-            self.on_state_change(self._is_recording, self._is_playing)
+        self._notify_state_change()
 
     def start_playback(
         self,
@@ -358,8 +383,7 @@ class MacroEngine:
             finally:
                 self._is_playing = False
                 time.sleep(0.150)  # Grace period so simulated keys don't trigger hotkeys
-                if self.on_state_change:
-                    self.on_state_change(self._is_recording, self._is_playing)
+                self._notify_state_change()
                 if on_complete:
                     on_complete()
 
@@ -368,8 +392,7 @@ class MacroEngine:
         )
         self._playback_thread.start()
 
-        if self.on_state_change:
-            self.on_state_change(self._is_recording, self._is_playing)
+        self._notify_state_change()
 
     def stop_playback(self):
         """Stops ongoing playback."""
@@ -377,8 +400,7 @@ class MacroEngine:
             return
         self._stop_playback_flag.set()
         self._is_playing = False
-        if self.on_state_change:
-            self.on_state_change(self._is_recording, self._is_playing)
+        self._notify_state_change()
 
     def save_to_file(self, file_path: str):
         """Saves current macro events to a JSON file."""
