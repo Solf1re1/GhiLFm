@@ -92,8 +92,6 @@ namespace ApexClicker.Core
 
         private void WorkerLoop()
         {
-            int inputSize = Marshal.SizeOf(typeof(Win32Api.INPUT));
-
             uint downFlag, upFlag;
             switch (Button)
             {
@@ -110,12 +108,6 @@ namespace ApexClicker.Core
                     upFlag = Win32Api.MOUSEEVENTF_LEFTUP;
                     break;
             }
-
-            var pressInputs = new Win32Api.INPUT[]
-            {
-                new Win32Api.INPUT { type = Win32Api.INPUT_MOUSE, u = new Win32Api.INPUT_UNION { mi = new Win32Api.MOUSEINPUT { dwFlags = downFlag } } },
-                new Win32Api.INPUT { type = Win32Api.INPUT_MOUSE, u = new Win32Api.INPUT_UNION { mi = new Win32Api.MOUSEINPUT { dwFlags = upFlag } } }
-            };
 
             long frequency = Stopwatch.Frequency;
             long clicksThisBatch = 0;
@@ -140,8 +132,14 @@ namespace ApexClicker.Core
                     Win32Api.SetCursorPos(targetX, targetY);
                 }
 
-                // Send Click
-                Win32Api.SendInput(2, pressInputs, inputSize);
+                // Send Click via mouse_event (universal, zero UIPI permission blocking)
+                Win32Api.mouse_event(downFlag, 0, 0, 0, UIntPtr.Zero);
+                if (TargetIntervalMs > 2.0)
+                {
+                    PreciseSleep(0.001, frequency); // 1ms down hold for game engines
+                }
+                Win32Api.mouse_event(upFlag, 0, 0, 0, UIntPtr.Zero);
+
                 totalCount++;
                 clicksThisBatch++;
                 Interlocked.Increment(ref _totalClicks);
@@ -149,7 +147,13 @@ namespace ApexClicker.Core
                 if (ClickType == ClickType.Double)
                 {
                     PreciseSleep(0.015, frequency); // 15ms double click gap
-                    Win32Api.SendInput(2, pressInputs, inputSize);
+                    Win32Api.mouse_event(downFlag, 0, 0, 0, UIntPtr.Zero);
+                    if (TargetIntervalMs > 2.0)
+                    {
+                        PreciseSleep(0.001, frequency);
+                    }
+                    Win32Api.mouse_event(upFlag, 0, 0, 0, UIntPtr.Zero);
+
                     totalCount++;
                     clicksThisBatch++;
                     Interlocked.Increment(ref _totalClicks);
@@ -175,6 +179,10 @@ namespace ApexClicker.Core
 
                 // Interval delay with microsecond spin-wait precision
                 double interval = TargetIntervalMs;
+                if (TargetIntervalMs > 2.0)
+                {
+                    interval = Math.Max(0.5, interval - 1.0);
+                }
                 if (AntiDetection && JitterTimingMs > 0)
                 {
                     double jitter = (_rand.NextDouble() * 2.0 - 1.0) * JitterTimingMs;

@@ -124,6 +124,9 @@ namespace ApexClicker.Native
         [DllImport("user32.dll", SetLastError = true)]
         public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
 
+        [DllImport("user32.dll")]
+        public static extern void mouse_event(uint dwFlags, int dx, int dy, uint dwData, UIntPtr dwExtraInfo);
+
         [DllImport("winmm.dll", EntryPoint = "timeBeginPeriod", SetLastError = true)]
         public static extern uint TimeBeginPeriod(uint uMilliseconds);
 

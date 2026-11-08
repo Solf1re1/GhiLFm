@@ -90,15 +90,8 @@ namespace ApexClicker.Core
                 return;
             }
 
-            int inputSize = Marshal.SizeOf(typeof(Win32Api.INPUT));
             uint downFlag = Button == MouseButtonType.Right ? Win32Api.MOUSEEVENTF_RIGHTDOWN : Win32Api.MOUSEEVENTF_LEFTDOWN;
             uint upFlag = Button == MouseButtonType.Right ? Win32Api.MOUSEEVENTF_RIGHTUP : Win32Api.MOUSEEVENTF_LEFTUP;
-
-            var inputs = new Win32Api.INPUT[]
-            {
-                new Win32Api.INPUT { type = Win32Api.INPUT_MOUSE, u = new Win32Api.INPUT_UNION { mi = new Win32Api.MOUSEINPUT { dwFlags = downFlag } } },
-                new Win32Api.INPUT { type = Win32Api.INPUT_MOUSE, u = new Win32Api.INPUT_UNION { mi = new Win32Api.MOUSEINPUT { dwFlags = upFlag } } }
-            };
 
             while (_isRunning)
             {
@@ -131,7 +124,9 @@ namespace ApexClicker.Core
                     MatchFound?.Invoke(new Point(foundScreenX, foundScreenY), match.Value.Confidence);
 
                     Win32Api.SetCursorPos(foundScreenX, foundScreenY);
-                    Win32Api.SendInput(2, inputs, inputSize);
+                    Win32Api.mouse_event(downFlag, 0, 0, 0, UIntPtr.Zero);
+                    Thread.Sleep(2);
+                    Win32Api.mouse_event(upFlag, 0, 0, 0, UIntPtr.Zero);
                 }
 
                 Thread.Sleep(Math.Max(20, ScanIntervalMs));

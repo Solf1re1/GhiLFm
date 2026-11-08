@@ -214,6 +214,26 @@ namespace ApexClicker
                     _macroEngine.StartPlayback();
                     break;
                 default:
+                    if (SliderCps != null && SliderCps.Value > 0)
+                        _clickEngine.TargetIntervalMs = 1000.0 / Math.Max(1.0, SliderCps.Value);
+                    if (CmbMouseButton != null)
+                        _clickEngine.Button = CmbMouseButton.SelectedIndex switch
+                        {
+                            1 => MouseButtonType.Right,
+                            2 => MouseButtonType.Middle,
+                            _ => MouseButtonType.Left
+                        };
+                    if (CmbClickMode != null)
+                        _clickEngine.ClickType = CmbClickMode.SelectedIndex switch
+                        {
+                            1 => ClickType.Double,
+                            _ => ClickType.Single
+                        };
+                    if (RbFixed != null)
+                        _clickEngine.UseFixedCoord = RbFixed.IsChecked == true;
+                    if (int.TryParse(TbCoordX?.Text, out int fx)) _clickEngine.FixedX = fx;
+                    if (int.TryParse(TbCoordY?.Text, out int fy)) _clickEngine.FixedY = fy;
+
                     _clickEngine.Start();
                     break;
             }

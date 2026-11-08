@@ -123,7 +123,6 @@ namespace ApexClicker.Core
 
         private void PlaybackLoop()
         {
-            int inputSize = Marshal.SizeOf(typeof(Win32Api.INPUT));
             long frequency = Stopwatch.Frequency;
             int currentLoop = 0;
 
@@ -162,11 +161,7 @@ namespace ApexClicker.Core
                             (ev.Button == 1 ? Win32Api.MOUSEEVENTF_RIGHTDOWN : Win32Api.MOUSEEVENTF_LEFTDOWN) :
                             (ev.Button == 1 ? Win32Api.MOUSEEVENTF_RIGHTUP : Win32Api.MOUSEEVENTF_LEFTUP);
 
-                        var inp = new Win32Api.INPUT[]
-                        {
-                            new Win32Api.INPUT { type = Win32Api.INPUT_MOUSE, u = new Win32Api.INPUT_UNION { mi = new Win32Api.MOUSEINPUT { dwFlags = dwFlag } } }
-                        };
-                        Win32Api.SendInput(1, inp, inputSize);
+                        Win32Api.mouse_event(dwFlag, 0, 0, 0, UIntPtr.Zero);
                     }
                     else if (ev.Kind == "key_down" || ev.Kind == "key_up")
                     {

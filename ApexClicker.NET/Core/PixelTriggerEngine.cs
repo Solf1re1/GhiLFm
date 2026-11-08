@@ -99,15 +99,15 @@ namespace ApexClicker.Core
 
         private void WorkerLoop()
         {
-            int inputSize = Marshal.SizeOf(typeof(Win32Api.INPUT));
             uint downFlag = Button == MouseButtonType.Right ? Win32Api.MOUSEEVENTF_RIGHTDOWN : Win32Api.MOUSEEVENTF_LEFTDOWN;
             uint upFlag = Button == MouseButtonType.Right ? Win32Api.MOUSEEVENTF_RIGHTUP : Win32Api.MOUSEEVENTF_LEFTUP;
 
-            var inputs = new Win32Api.INPUT[]
+            void DoClick()
             {
-                new Win32Api.INPUT { type = Win32Api.INPUT_MOUSE, u = new Win32Api.INPUT_UNION { mi = new Win32Api.MOUSEINPUT { dwFlags = downFlag } } },
-                new Win32Api.INPUT { type = Win32Api.INPUT_MOUSE, u = new Win32Api.INPUT_UNION { mi = new Win32Api.MOUSEINPUT { dwFlags = upFlag } } }
-            };
+                Win32Api.mouse_event(downFlag, 0, 0, 0, UIntPtr.Zero);
+                Thread.Sleep(2);
+                Win32Api.mouse_event(upFlag, 0, 0, 0, UIntPtr.Zero);
+            }
 
             bool wasMatching = false;
 
@@ -122,7 +122,7 @@ namespace ApexClicker.Core
                 {
                     if (isMatch && !wasMatching)
                     {
-                        Win32Api.SendInput(2, inputs, inputSize);
+                        DoClick();
                         wasMatching = true;
                     }
                     else if (!isMatch)
@@ -134,14 +134,14 @@ namespace ApexClicker.Core
                 {
                     if (isMatch)
                     {
-                        Win32Api.SendInput(2, inputs, inputSize);
+                        DoClick();
                     }
                 }
                 else if (Mode == PixelTriggerMode.TriggerOnColorChange)
                 {
                     if (!isMatch && wasMatching)
                     {
-                        Win32Api.SendInput(2, inputs, inputSize);
+                        DoClick();
                     }
                     wasMatching = isMatch;
                 }

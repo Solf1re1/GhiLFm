@@ -74,7 +74,6 @@ namespace ApexClicker.Core
 
         private void WorkerLoop()
         {
-            int inputSize = Marshal.SizeOf(typeof(Win32Api.INPUT));
             int loops = 0;
 
             while (_isRunning)
@@ -100,24 +99,22 @@ namespace ApexClicker.Core
                         Win32Api.SetCursorPos(targetX, targetY);
                     }
 
-                    // Click
+                    // Click via mouse_event (universal, zero UIPI permission blocking)
                     uint downFlag = pt.Button == MouseButtonType.Right ? Win32Api.MOUSEEVENTF_RIGHTDOWN :
                                    (pt.Button == MouseButtonType.Middle ? Win32Api.MOUSEEVENTF_MIDDLEDOWN : Win32Api.MOUSEEVENTF_LEFTDOWN);
                     uint upFlag = pt.Button == MouseButtonType.Right ? Win32Api.MOUSEEVENTF_RIGHTUP :
                                  (pt.Button == MouseButtonType.Middle ? Win32Api.MOUSEEVENTF_MIDDLEUP : Win32Api.MOUSEEVENTF_LEFTUP);
 
-                    var inputs = new Win32Api.INPUT[]
-                    {
-                        new Win32Api.INPUT { type = Win32Api.INPUT_MOUSE, u = new Win32Api.INPUT_UNION { mi = new Win32Api.MOUSEINPUT { dwFlags = downFlag } } },
-                        new Win32Api.INPUT { type = Win32Api.INPUT_MOUSE, u = new Win32Api.INPUT_UNION { mi = new Win32Api.MOUSEINPUT { dwFlags = upFlag } } }
-                    };
-
-                    Win32Api.SendInput(2, inputs, inputSize);
+                    Win32Api.mouse_event(downFlag, 0, 0, 0, UIntPtr.Zero);
+                    Thread.Sleep(2); // 2ms down hold
+                    Win32Api.mouse_event(upFlag, 0, 0, 0, UIntPtr.Zero);
 
                     if (pt.ClickType == ClickType.Double)
                     {
                         Thread.Sleep(15);
-                        Win32Api.SendInput(2, inputs, inputSize);
+                        Win32Api.mouse_event(downFlag, 0, 0, 0, UIntPtr.Zero);
+                        Thread.Sleep(2);
+                        Win32Api.mouse_event(upFlag, 0, 0, 0, UIntPtr.Zero);
                     }
 
                     // Delay
