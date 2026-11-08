@@ -20,7 +20,6 @@ namespace ApexClicker.Core
         public bool ShowVisualBot { get; set; } = true;
         public bool ShowKeySpammer { get; set; } = true;
         public bool ShowMacroStudio { get; set; } = true;
-        public bool ShowAutomationStudio { get; set; } = true;
 
         private static readonly string SettingsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "settings.json");
 
