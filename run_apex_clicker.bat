@@ -1,9 +1,4 @@
 @echo off
-title ApexClicker Pro
-echo Starting ApexClicker Pro...
-python main.py
-if %ERRORLEVEL% NEQ 0 (
-    echo.
-    echo Application exited with an error.
-    pause
-)
+title ApexClicker Pro v1.5 (Native)
+echo Starting ApexClicker Pro Native v1.5...
+start "" "C:\moddingtools\ApexClicker.exe"

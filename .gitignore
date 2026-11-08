@@ -23,3 +23,8 @@ run.bat
 
 # Release binaries (attach to GitHub Releases instead)
 dist/
+ApexClicker.NET/dist/
+
+# .NET build artifacts
+**/bin/
+**/obj/
