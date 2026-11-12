@@ -379,11 +379,20 @@ namespace ApexClicker
         // ================= VISUAL BOT CONTROLS =================
         private void UpdateVisualTargetCount()
         {
+            UpdateVisualTargetNumbers();
             int active = _visualEngine.Targets.Count(t => t.IsEnabled);
             int total = _visualEngine.Targets.Count;
             if (TxtVisualTargetCount != null)
             {
                 TxtVisualTargetCount.Text = $"TARGETS ({active} Active / {total} Total)";
+            }
+        }
+
+        private void UpdateVisualTargetNumbers()
+        {
+            for (int i = 0; i < _visualEngine.Targets.Count; i++)
+            {
+                _visualEngine.Targets[i].StepNumber = i + 1;
             }
         }
 
@@ -486,6 +495,54 @@ namespace ApexClicker
             }
         }
 
+        private void BtnVisualAddText_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new TextTargetDialog();
+            dlg.Owner = this;
+            if (dlg.ShowDialog() == true && dlg.CreatedTarget != null)
+            {
+                _visualEngine.Targets.Add(dlg.CreatedTarget);
+                UpdateVisualTargetCount();
+                TxtVisualStatus.Text = $"✅ Added text target '{dlg.CreatedTarget.Name}' ({dlg.CreatedTarget.DisplayDetails}) to queue!";
+            }
+        }
+
+        private void BtnVisualMoveUp_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is string id)
+            {
+                var item = _visualEngine.Targets.FirstOrDefault(t => t.Id == id);
+                if (item != null)
+                {
+                    int idx = _visualEngine.Targets.IndexOf(item);
+                    if (idx > 0)
+                    {
+                        _visualEngine.Targets.Move(idx, idx - 1);
+                        UpdateVisualTargetNumbers();
+                        TxtVisualStatus.Text = $"Moved '{item.Name}' up to Step #{idx}.";
+                    }
+                }
+            }
+        }
+
+        private void BtnVisualMoveDown_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is string id)
+            {
+                var item = _visualEngine.Targets.FirstOrDefault(t => t.Id == id);
+                if (item != null)
+                {
+                    int idx = _visualEngine.Targets.IndexOf(item);
+                    if (idx >= 0 && idx < _visualEngine.Targets.Count - 1)
+                    {
+                        _visualEngine.Targets.Move(idx, idx + 1);
+                        UpdateVisualTargetNumbers();
+                        TxtVisualStatus.Text = $"Moved '{item.Name}' down to Step #{idx + 2}.";
+                    }
+                }
+            }
+        }
+
         private void SyncVisualEngineSettings()
         {
             if (_isInitializing || SliderVisualConf == null) return;
@@ -509,6 +566,8 @@ namespace ApexClicker
             if (TbVisualInterval != null && double.TryParse(TbVisualInterval.Text, out double intvSec)) _visualEngine.ScanIntervalSec = Math.Max(0.01, intvSec);
             if (CmbVisualStrategy != null) _visualEngine.Strategy = CmbVisualStrategy.SelectedIndex == 1 ? VisualSelectionStrategy.ClosestToCursor : VisualSelectionStrategy.HighestConfidence;
             if (CmbVisualFlow != null) _visualEngine.FlowMode = CmbVisualFlow.SelectedIndex == 1 ? VisualFlowMode.OrderedSteps : VisualFlowMode.AnyMatch;
+            if (CmbStepMissing != null) _visualEngine.NotFoundMode = CmbStepMissing.SelectedIndex == 1 ? NotFoundBehavior.SkipToNext : NotFoundBehavior.WaitThenProceed;
+            if (TbStepTimeout != null && double.TryParse(TbStepTimeout.Text, out double sTimeout)) _visualEngine.StepTimeoutSec = Math.Max(0.5, sTimeout);
             if (ChkVisualLoop != null) _visualEngine.LoopQueue = ChkVisualLoop.IsChecked == true;
             if (ChkUseRegion != null) _visualEngine.UseRegion = ChkUseRegion.IsChecked == true;
             if (TbRegX != null && int.TryParse(TbRegX.Text, out int rx)) _visualEngine.RegionX = rx;
@@ -529,6 +588,9 @@ namespace ApexClicker
                 if (TbVisualInterval != null) TbVisualInterval.Text = _settings.VisualScanIntervalSec.ToString("0.00");
                 if (CmbVisualStrategy != null) CmbVisualStrategy.SelectedIndex = Math.Clamp(_settings.VisualSelectionStrategy, 0, 1);
                 if (CmbVisualFlow != null) CmbVisualFlow.SelectedIndex = Math.Clamp(_settings.VisualFlowMode, 0, 1);
+                if (CmbStepMissing != null) CmbStepMissing.SelectedIndex = Math.Clamp(_settings.VisualNotFoundMode, 0, 1);
+                if (TbStepTimeout != null) TbStepTimeout.Text = _settings.VisualStepTimeoutSec.ToString("0.0");
+                if (PanelOrderedOptions != null) PanelOrderedOptions.Visibility = _settings.VisualFlowMode == 1 ? Visibility.Visible : Visibility.Collapsed;
                 if (ChkVisualLoop != null) ChkVisualLoop.IsChecked = _settings.VisualLoopQueue;
                 if (ChkUseRegion != null) ChkUseRegion.IsChecked = _settings.VisualUseRegion;
                 if (TbRegX != null) TbRegX.Text = _settings.VisualRegionX.ToString();
@@ -554,6 +616,8 @@ namespace ApexClicker
                 _settings.VisualScanIntervalSec = _visualEngine.ScanIntervalSec;
                 _settings.VisualSelectionStrategy = (int)_visualEngine.Strategy;
                 _settings.VisualFlowMode = (int)_visualEngine.FlowMode;
+                _settings.VisualNotFoundMode = (int)_visualEngine.NotFoundMode;
+                _settings.VisualStepTimeoutSec = _visualEngine.StepTimeoutSec;
                 _settings.VisualLoopQueue = _visualEngine.LoopQueue;
                 _settings.VisualUseRegion = _visualEngine.UseRegion;
                 _settings.VisualRegionX = _visualEngine.RegionX;
@@ -668,6 +732,10 @@ namespace ApexClicker
         {
             if (_isInitializing) return;
             SyncVisualEngineSettings();
+            if (PanelOrderedOptions != null)
+            {
+                PanelOrderedOptions.Visibility = CmbVisualFlow.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
+            }
             SaveVisualSettingsToAppConfig();
         }
 
@@ -781,6 +849,9 @@ namespace ApexClicker
                 TbVisualInterval.Text = _visualEngine.ScanIntervalSec.ToString("0.00");
                 if (CmbVisualStrategy != null) CmbVisualStrategy.SelectedIndex = (int)_visualEngine.Strategy;
                 CmbVisualFlow.SelectedIndex = (int)_visualEngine.FlowMode;
+                if (CmbStepMissing != null) CmbStepMissing.SelectedIndex = (int)_visualEngine.NotFoundMode;
+                if (TbStepTimeout != null) TbStepTimeout.Text = _visualEngine.StepTimeoutSec.ToString("0.0");
+                if (PanelOrderedOptions != null) PanelOrderedOptions.Visibility = _visualEngine.FlowMode == VisualFlowMode.OrderedSteps ? Visibility.Visible : Visibility.Collapsed;
                 ChkVisualLoop.IsChecked = _visualEngine.LoopQueue;
                 ChkUseRegion.IsChecked = _visualEngine.UseRegion;
                 TbRegX.Text = _visualEngine.RegionX.ToString();

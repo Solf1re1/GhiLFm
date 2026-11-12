@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -8,11 +9,19 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
+using System.Threading.Tasks;
 using ApexClicker.Native;
 
 namespace ApexClicker.Core
 {
-    public class VisualTargetItem
+    public enum VisualTargetType
+    {
+        Image = 0,
+        TextOcr = 1,
+        TextTemplate = 2
+    }
+
+    public class VisualTargetItem : INotifyPropertyChanged
     {
         public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
         public string Name { get; set; } = "Target";
@@ -21,14 +30,67 @@ namespace ApexClicker.Core
         public int Width { get; set; }
         public int Height { get; set; }
 
+        public VisualTargetType TargetType { get; set; } = VisualTargetType.Image;
+        public string TargetText { get; set; } = "";
+        public bool ExactWordMatch { get; set; } = false;
+        public bool CaseSensitive { get; set; } = false;
+
+        public double StepDelaySec { get; set; } = 0.0;
+        public double StepTimeoutSec { get; set; } = 5.0;
+
+        private int _stepNumber = 1;
         [JsonIgnore]
-        public string DisplayDetails => $"{Width}x{Height} px • {(File.Exists(FilePath) ? "Ready" : "Missing File")}";
+        public int StepNumber
+        {
+            get => _stepNumber;
+            set
+            {
+                if (_stepNumber != value)
+                {
+                    _stepNumber = value;
+                    OnPropertyChanged(nameof(StepNumber));
+                    OnPropertyChanged(nameof(StepBadge));
+                }
+            }
+        }
+
+        [JsonIgnore]
+        public string StepBadge => $"#{StepNumber}";
+
+        [JsonIgnore]
+        public string TypeIcon => TargetType switch
+        {
+            VisualTargetType.TextOcr => "🔤",
+            VisualTargetType.TextTemplate => "🔤",
+            _ => "🖼️"
+        };
+
+        [JsonIgnore]
+        public string DisplayDetails
+        {
+            get
+            {
+                if (TargetType == VisualTargetType.TextOcr)
+                {
+                    string matchDesc = ExactWordMatch ? "Exact Word" : "Contains";
+                    return $"Text OCR: \"{TargetText}\" • {matchDesc}";
+                }
+                if (TargetType == VisualTargetType.TextTemplate)
+                {
+                    return $"Text Template: \"{TargetText}\" • {Width}x{Height} px";
+                }
+                return $"{Width}x{Height} px • {(File.Exists(FilePath) ? "Ready" : "Missing File")}";
+            }
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+        public void OnPropertyChanged(string propName) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propName));
     }
 
     public enum VisualFlowMode
     {
-        AnyMatch,
-        OrderedSteps
+        AnyMatch = 0,
+        OrderedSteps = 1
     }
 
     public enum VisualSelectionStrategy
@@ -39,8 +101,8 @@ namespace ApexClicker.Core
 
     public enum NotFoundBehavior
     {
-        WaitThenProceed,
-        SkipToNext
+        WaitThenProceed = 0,
+        SkipToNext = 1
     }
 
     public enum CursorTravelSpeed
@@ -126,7 +188,7 @@ namespace ApexClicker.Core
             ValidCount = Pixels.Length;
             MaxPossibleError = ValidCount * 255L;
 
-            // Sparse anchor pixels (48 pixels evenly distributed across the template for instantaneous coarse screening)
+            // Sparse anchor pixels (48 pixels evenly distributed for fast coarse screening)
             if (pixelList.Count <= 48)
             {
                 AnchorPixels = Pixels;
@@ -161,15 +223,9 @@ namespace ApexClicker.Core
         public double ScanIntervalSec { get; set; } = 0.10;
         public VisualSelectionStrategy Strategy { get; set; } = VisualSelectionStrategy.HighestConfidence;
 
-        [JsonPropertyName("ScanIntervalMs")]
-        public int? LegacyScanIntervalMs
-        {
-            get => (int)(ScanIntervalSec * 1000.0);
-            set { if (value.HasValue && value.Value > 0) ScanIntervalSec = value.Value / 1000.0; }
-        }
-
         public VisualFlowMode FlowMode { get; set; } = VisualFlowMode.AnyMatch;
         public NotFoundBehavior NotFoundMode { get; set; } = NotFoundBehavior.WaitThenProceed;
+        public double StepTimeoutSec { get; set; } = 5.0;
         public bool LoopQueue { get; set; } = true;
         public bool UseRegion { get; set; } = false;
         public int RegionX { get; set; } = 100;
@@ -178,13 +234,20 @@ namespace ApexClicker.Core
         public int RegionHeight { get; set; } = 300;
     }
 
+    public class TargetMatchResult
+    {
+        public VisualTargetItem Target { get; set; } = null!;
+        public Point CenterPos { get; set; }
+        public double Confidence { get; set; }
+    }
+
     public class VisualBotEngine
     {
         public ObservableCollection<VisualTargetItem> Targets { get; } = new();
 
-        public double ConfidenceThreshold { get; set; } = 0.60; // 60% default (Similar mode)
+        public double ConfidenceThreshold { get; set; } = 0.60;
         public MouseButtonType Button { get; set; } = MouseButtonType.Left;
-        public ClickType ClickType { get; set; } = ClickType.Double; // Double click default (open app / game item)
+        public ClickType ClickType { get; set; } = ClickType.Double;
         public bool SmoothMovement { get; set; } = true;
         public CursorTravelSpeed TravelSpeed { get; set; } = CursorTravelSpeed.Smooth;
         public double CooldownSec { get; set; } = 0.5;
@@ -193,6 +256,7 @@ namespace ApexClicker.Core
 
         public VisualFlowMode FlowMode { get; set; } = VisualFlowMode.AnyMatch;
         public NotFoundBehavior NotFoundMode { get; set; } = NotFoundBehavior.WaitThenProceed;
+        public double StepTimeoutSec { get; set; } = 5.0;
         public bool LoopQueue { get; set; } = true;
 
         public bool UseRegion { get; set; } = false;
@@ -232,6 +296,41 @@ namespace ApexClicker.Core
                 Directory.CreateDirectory(dir);
                 return dir;
             }
+        }
+
+        public static Bitmap GenerateTextTemplate(
+            string text,
+            string fontFamily = "Segoe UI",
+            int fontSize = 16,
+            bool bold = true,
+            Color? textColor = null,
+            Color? bgColor = null)
+        {
+            var style = bold ? FontStyle.Bold : FontStyle.Regular;
+            using var tempBmp = new Bitmap(1, 1);
+            using var tempG = Graphics.FromImage(tempBmp);
+            using var font = new Font(fontFamily, fontSize, style, GraphicsUnit.Pixel);
+            var size = tempG.MeasureString(text, font);
+            int w = Math.Max(12, (int)Math.Ceiling(size.Width) + 8);
+            int h = Math.Max(12, (int)Math.Ceiling(size.Height) + 6);
+
+            var bmp = new Bitmap(w, h, PixelFormat.Format32bppArgb);
+            using (var g = Graphics.FromImage(bmp))
+            {
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+                if (bgColor.HasValue)
+                {
+                    g.Clear(bgColor.Value);
+                }
+                else
+                {
+                    g.Clear(Color.Transparent);
+                }
+
+                using var brush = new SolidBrush(textColor ?? Color.White);
+                g.DrawString(text, font, brush, 4, 3);
+            }
+            return bmp;
         }
 
         public void Start()
@@ -276,22 +375,27 @@ namespace ApexClicker.Core
 
         private void WorkerLoop()
         {
-            // Cache prepared templates once
-            var activeTemplates = new List<PreparedTemplate>();
+            var activeTargets = new List<VisualTargetItem>();
+            var preparedMap = new Dictionary<string, PreparedTemplate>();
+
             foreach (var target in Targets)
             {
-                if (target.IsEnabled && File.Exists(target.FilePath))
+                if (target.IsEnabled)
                 {
-                    try
+                    activeTargets.Add(target);
+                    if (target.TargetType != VisualTargetType.TextOcr && File.Exists(target.FilePath))
                     {
-                        using var bmp = new Bitmap(target.FilePath);
-                        activeTemplates.Add(new PreparedTemplate(target, bmp));
+                        try
+                        {
+                            using var bmp = new Bitmap(target.FilePath);
+                            preparedMap[target.Id] = new PreparedTemplate(target, bmp);
+                        }
+                        catch { }
                     }
-                    catch { }
                 }
             }
 
-            if (activeTemplates.Count == 0)
+            if (activeTargets.Count == 0)
             {
                 StatusReported?.Invoke("No active targets found in queue.");
                 _isRunning = false;
@@ -300,7 +404,9 @@ namespace ApexClicker.Core
                 return;
             }
 
-            int currentOrderedIndex = 0;
+            int currentStepIndex = 0;
+            DateTime stepStartTime = DateTime.UtcNow;
+            string lastWaitingTargetId = "";
 
             try
             {
@@ -332,49 +438,53 @@ namespace ApexClicker.Core
 
                         if (FlowMode == VisualFlowMode.AnyMatch)
                         {
-                            PreparedTemplate? bestTarget = null;
-                            MatchResult? bestMatch = null;
+                            TargetMatchResult? bestResult = null;
                             double bestDistSq = double.MaxValue;
 
-                            foreach (var prep in activeTemplates)
+                            // Cache OCR result across targets if any OCR target is active
+                            Windows.Media.Ocr.OcrResult? ocrResult = null;
+                            bool ocrExecuted = false;
+
+                            foreach (var target in activeTargets)
                             {
                                 if (!_isRunning) break;
-                                if (searchW < prep.Width || searchH < prep.Height) continue;
 
-                                var match = FastTemplateSearch(screenBmp, prep, ConfidenceThreshold, Strategy, searchX, searchY, cursorPos);
-                                if (match.HasValue)
+                                preparedMap.TryGetValue(target.Id, out var prep);
+                                if (target.TargetType != VisualTargetType.TextOcr && prep == null) continue;
+
+                                if (target.TargetType == VisualTargetType.TextOcr && !ocrExecuted)
+                                {
+                                    ocrResult = OcrService.RecognizeAsync(screenBmp).GetAwaiter().GetResult();
+                                    ocrExecuted = true;
+                                }
+
+                                var match = FindTarget(screenBmp, target, prep, ocrResult, searchX, searchY, cursorPos);
+                                if (match != null)
                                 {
                                     if (Strategy == VisualSelectionStrategy.ClosestToCursor)
                                     {
-                                        int cX = searchX + match.Value.X + (prep.Width / 2) + ClickOffsetX;
-                                        int cY = searchY + match.Value.Y + (prep.Height / 2) + ClickOffsetY;
-                                        double distSq = Math.Pow(cX - cursorPos.X, 2) + Math.Pow(cY - cursorPos.Y, 2);
-                                        if (bestMatch == null || distSq < bestDistSq)
+                                        double distSq = Math.Pow(match.CenterPos.X - cursorPos.X, 2) + Math.Pow(match.CenterPos.Y - cursorPos.Y, 2);
+                                        if (bestResult == null || distSq < bestDistSq)
                                         {
                                             bestDistSq = distSq;
-                                            bestMatch = match;
-                                            bestTarget = prep;
+                                            bestResult = match;
                                         }
                                     }
                                     else
                                     {
-                                        if (bestMatch == null || match.Value.Confidence > bestMatch.Value.Confidence)
+                                        if (bestResult == null || match.Confidence > bestResult.Confidence)
                                         {
-                                            bestMatch = match;
-                                            bestTarget = prep;
+                                            bestResult = match;
                                         }
                                     }
                                 }
                             }
 
-                            if (bestMatch.HasValue && bestTarget != null)
+                            if (bestResult != null)
                             {
-                                int clickX = searchX + bestMatch.Value.X + (bestTarget.Width / 2) + ClickOffsetX;
-                                int clickY = searchY + bestMatch.Value.Y + (bestTarget.Height / 2) + ClickOffsetY;
-
-                                ExecuteClick(clickX, clickY);
-                                MatchFound?.Invoke(bestTarget.Item.Name, new Point(clickX, clickY), bestMatch.Value.Confidence);
-                                StatusReported?.Invoke($"Clicked {bestTarget.Item.Name} ({bestMatch.Value.Confidence * 100:F1}%) at ({clickX}, {clickY})");
+                                ExecuteClick(bestResult.CenterPos.X, bestResult.CenterPos.Y);
+                                MatchFound?.Invoke(bestResult.Target.Name, bestResult.CenterPos, bestResult.Confidence);
+                                StatusReported?.Invoke($"Clicked {bestResult.Target.Name} ({bestResult.Confidence * 100:F1}%) at ({bestResult.CenterPos.X}, {bestResult.CenterPos.Y})");
 
                                 if (CooldownSec > 0)
                                 {
@@ -384,44 +494,66 @@ namespace ApexClicker.Core
                         }
                         else
                         {
-                            // Ordered Steps Mode (1 -> 2 -> 3)
-                            if (currentOrderedIndex >= activeTemplates.Count)
+                            // ================= ORDERED STEPS MODE (1 -> 2 -> 3) =================
+                            if (currentStepIndex >= activeTargets.Count)
                             {
-                                if (LoopQueue) currentOrderedIndex = 0;
+                                if (LoopQueue)
+                                {
+                                    StatusReported?.Invoke($"🔁 Finished sequence ({activeTargets.Count} steps). Looping to Step #1...");
+                                    currentStepIndex = 0;
+                                    stepStartTime = DateTime.UtcNow;
+                                    lastWaitingTargetId = "";
+                                    if (CooldownSec > 0) Thread.Sleep((int)(CooldownSec * 1000.0));
+                                    continue;
+                                }
                                 else
                                 {
+                                    StatusReported?.Invoke($"✅ Completed all {activeTargets.Count} ordered steps successfully!");
                                     _isRunning = false;
                                     break;
                                 }
                             }
 
-                            var prep = activeTemplates[currentOrderedIndex];
-                            MatchResult? match = null;
-                            if (searchW >= prep.Width && searchH >= prep.Height)
+                            var currentTarget = activeTargets[currentStepIndex];
+
+                            if (lastWaitingTargetId != currentTarget.Id)
                             {
-                                match = FastTemplateSearch(screenBmp, prep, ConfidenceThreshold, Strategy, searchX, searchY, cursorPos);
+                                string targetInfo = currentTarget.TargetType == VisualTargetType.TextOcr ? $"\"{currentTarget.TargetText}\" (Text OCR)" : $"'{currentTarget.Name}'";
+                                StatusReported?.Invoke($"Step #{currentStepIndex + 1}/{activeTargets.Count}: Waiting for {targetInfo}...");
+                                lastWaitingTargetId = currentTarget.Id;
                             }
 
-                            if (match.HasValue)
+                            preparedMap.TryGetValue(currentTarget.Id, out var prep);
+                            var match = FindTarget(screenBmp, currentTarget, prep, null, searchX, searchY, cursorPos);
+
+                            if (match != null)
                             {
-                                int clickX = searchX + match.Value.X + (prep.Width / 2) + ClickOffsetX;
-                                int clickY = searchY + match.Value.Y + (prep.Height / 2) + ClickOffsetY;
+                                ExecuteClick(match.CenterPos.X, match.CenterPos.Y);
+                                MatchFound?.Invoke(currentTarget.Name, match.CenterPos, match.Confidence);
+                                StatusReported?.Invoke($"Step #{currentStepIndex + 1}/{activeTargets.Count}: Clicked '{currentTarget.Name}' ({match.Confidence * 100:F1}%) at ({match.CenterPos.X}, {match.CenterPos.Y})");
 
-                                ExecuteClick(clickX, clickY);
-                                MatchFound?.Invoke(prep.Item.Name, new Point(clickX, clickY), match.Value.Confidence);
-                                StatusReported?.Invoke($"Step #{currentOrderedIndex + 1}: Clicked {prep.Item.Name} ({match.Value.Confidence * 100:F1}%)");
-
-                                currentOrderedIndex++;
-                                if (CooldownSec > 0)
+                                double delay = currentTarget.StepDelaySec > 0 ? currentTarget.StepDelaySec : CooldownSec;
+                                if (delay > 0)
                                 {
-                                    Thread.Sleep((int)(CooldownSec * 1000.0));
+                                    Thread.Sleep((int)(delay * 1000.0));
                                 }
+
+                                currentStepIndex++;
+                                stepStartTime = DateTime.UtcNow;
+                                lastWaitingTargetId = "";
                             }
                             else
                             {
                                 if (NotFoundMode == NotFoundBehavior.SkipToNext)
                                 {
-                                    currentOrderedIndex++;
+                                    double timeout = currentTarget.StepTimeoutSec > 0 ? currentTarget.StepTimeoutSec : StepTimeoutSec;
+                                    if (timeout > 0 && (DateTime.UtcNow - stepStartTime).TotalSeconds >= timeout)
+                                    {
+                                        StatusReported?.Invoke($"Step #{currentStepIndex + 1}/{activeTargets.Count}: '{currentTarget.Name}' timed out after {timeout:F1}s ➔ Skipping to next step.");
+                                        currentStepIndex++;
+                                        stepStartTime = DateTime.UtcNow;
+                                        lastWaitingTargetId = "";
+                                    }
                                 }
                             }
                         }
@@ -436,6 +568,74 @@ namespace ApexClicker.Core
                 Win32Api.TimeEndPeriod(1);
                 _isRunning = false;
                 StateChanged?.Invoke(false);
+            }
+        }
+
+        private TargetMatchResult? FindTarget(
+            Bitmap screenBmp,
+            VisualTargetItem target,
+            PreparedTemplate? prep,
+            Windows.Media.Ocr.OcrResult? cachedOcr,
+            int searchX,
+            int searchY,
+            Point cursorPos)
+        {
+            if (target.TargetType == VisualTargetType.TextOcr)
+            {
+                List<TextMatchResult> matches;
+                if (cachedOcr != null)
+                {
+                    matches = OcrService.ParseOcrResults(cachedOcr, target.TargetText, target.ExactWordMatch, target.CaseSensitive, searchX, searchY);
+                }
+                else
+                {
+                    matches = OcrService.FindText(screenBmp, target.TargetText, target.ExactWordMatch, target.CaseSensitive, searchX, searchY);
+                }
+
+                if (matches.Count > 0)
+                {
+                    TextMatchResult best = matches[0];
+                    if (matches.Count > 1 && Strategy == VisualSelectionStrategy.ClosestToCursor)
+                    {
+                        double bestDist = double.MaxValue;
+                        foreach (var m in matches)
+                        {
+                            double d = Math.Pow(m.CenterX + ClickOffsetX - cursorPos.X, 2) + Math.Pow(m.CenterY + ClickOffsetY - cursorPos.Y, 2);
+                            if (d < bestDist)
+                            {
+                                bestDist = d;
+                                best = m;
+                            }
+                        }
+                    }
+
+                    return new TargetMatchResult
+                    {
+                        Target = target,
+                        CenterPos = new Point(best.CenterX + ClickOffsetX, best.CenterY + ClickOffsetY),
+                        Confidence = best.Confidence
+                    };
+                }
+                return null;
+            }
+            else
+            {
+                if (prep == null) return null;
+                if (screenBmp.Width < prep.Width || screenBmp.Height < prep.Height) return null;
+
+                var match = FastTemplateSearch(screenBmp, prep, ConfidenceThreshold, Strategy, searchX, searchY, cursorPos);
+                if (match.HasValue)
+                {
+                    int clickX = searchX + match.Value.X + (prep.Width / 2) + ClickOffsetX;
+                    int clickY = searchY + match.Value.Y + (prep.Height / 2) + ClickOffsetY;
+                    return new TargetMatchResult
+                    {
+                        Target = target,
+                        CenterPos = new Point(clickX, clickY),
+                        Confidence = match.Value.Confidence
+                    };
+                }
+                return null;
             }
         }
 
@@ -497,48 +697,82 @@ namespace ApexClicker.Core
             Win32Api.GetCursorPos(out var mousePt);
             Point cursorPos = new Point(mousePt.X, mousePt.Y);
 
-            PreparedTemplate? bestPrep = null;
-            MatchResult? bestMatch = null;
-            double bestDistSq = double.MaxValue;
-
-            foreach (var target in Targets)
+            // In OrderedSteps mode, test the first enabled target
+            if (FlowMode == VisualFlowMode.OrderedSteps)
             {
-                if (!target.IsEnabled || !File.Exists(target.FilePath)) continue;
-                using var bmp = new Bitmap(target.FilePath);
-                if (searchW < bmp.Width || searchH < bmp.Height) continue;
-
-                var prep = new PreparedTemplate(target, bmp);
-                var match = FastTemplateSearch(screenBmp, prep, ConfidenceThreshold, Strategy, searchX, searchY, cursorPos);
-                if (match.HasValue)
+                foreach (var target in Targets)
                 {
-                    if (Strategy == VisualSelectionStrategy.ClosestToCursor)
+                    if (!target.IsEnabled) continue;
+
+                    PreparedTemplate? prep = null;
+                    if (target.TargetType != VisualTargetType.TextOcr && File.Exists(target.FilePath))
                     {
-                        int cX = searchX + match.Value.X + (prep.Width / 2) + ClickOffsetX;
-                        int cY = searchY + match.Value.Y + (prep.Height / 2) + ClickOffsetY;
-                        double distSq = Math.Pow(cX - cursorPos.X, 2) + Math.Pow(cY - cursorPos.Y, 2);
-                        if (bestMatch == null || distSq < bestDistSq)
-                        {
-                            bestDistSq = distSq;
-                            bestMatch = match;
-                            bestPrep = prep;
-                        }
+                        using var bmp = new Bitmap(target.FilePath);
+                        prep = new PreparedTemplate(target, bmp);
+                    }
+
+                    var match = FindTarget(screenBmp, target, prep, null, searchX, searchY, cursorPos);
+                    if (match != null)
+                    {
+                        return (true, $"Step #1: {match.Target.Name}", match.CenterPos, match.Confidence);
                     }
                     else
                     {
-                        if (bestMatch == null || match.Value.Confidence > bestMatch.Value.Confidence)
-                        {
-                            bestMatch = match;
-                            bestPrep = prep;
-                        }
+                        return (false, $"Step #1: {target.Name}", Point.Empty, 0);
                     }
                 }
             }
-
-            if (bestMatch.HasValue && bestPrep != null)
+            else
             {
-                int clickX = searchX + bestMatch.Value.X + (bestPrep.Width / 2) + ClickOffsetX;
-                int clickY = searchY + bestMatch.Value.Y + (bestPrep.Height / 2) + ClickOffsetY;
-                return (true, bestPrep.Item.Name, new Point(clickX, clickY), bestMatch.Value.Confidence);
+                // AnyMatch mode: find best candidate across all active targets
+                TargetMatchResult? bestResult = null;
+                double bestDistSq = double.MaxValue;
+                Windows.Media.Ocr.OcrResult? ocrResult = null;
+                bool ocrRun = false;
+
+                foreach (var target in Targets)
+                {
+                    if (!target.IsEnabled) continue;
+
+                    PreparedTemplate? prep = null;
+                    if (target.TargetType != VisualTargetType.TextOcr && File.Exists(target.FilePath))
+                    {
+                        using var bmp = new Bitmap(target.FilePath);
+                        prep = new PreparedTemplate(target, bmp);
+                    }
+
+                    if (target.TargetType == VisualTargetType.TextOcr && !ocrRun)
+                    {
+                        ocrResult = OcrService.RecognizeAsync(screenBmp).GetAwaiter().GetResult();
+                        ocrRun = true;
+                    }
+
+                    var match = FindTarget(screenBmp, target, prep, ocrResult, searchX, searchY, cursorPos);
+                    if (match != null)
+                    {
+                        if (Strategy == VisualSelectionStrategy.ClosestToCursor)
+                        {
+                            double distSq = Math.Pow(match.CenterPos.X - cursorPos.X, 2) + Math.Pow(match.CenterPos.Y - cursorPos.Y, 2);
+                            if (bestResult == null || distSq < bestDistSq)
+                            {
+                                bestDistSq = distSq;
+                                bestResult = match;
+                            }
+                        }
+                        else
+                        {
+                            if (bestResult == null || match.Confidence > bestResult.Confidence)
+                            {
+                                bestResult = match;
+                            }
+                        }
+                    }
+                }
+
+                if (bestResult != null)
+                {
+                    return (true, bestResult.Target.Name, bestResult.CenterPos, bestResult.Confidence);
+                }
             }
 
             return (false, "", Point.Empty, 0);
@@ -571,6 +805,7 @@ namespace ApexClicker.Core
                 Strategy = Strategy,
                 FlowMode = FlowMode,
                 NotFoundMode = NotFoundMode,
+                StepTimeoutSec = StepTimeoutSec,
                 LoopQueue = LoopQueue,
                 UseRegion = UseRegion,
                 RegionX = RegionX,
@@ -596,8 +831,10 @@ namespace ApexClicker.Core
                 if (preset == null) return false;
 
                 Targets.Clear();
+                int idx = 1;
                 foreach (var t in preset.Targets)
                 {
+                    t.StepNumber = idx++;
                     Targets.Add(t);
                 }
 
@@ -611,6 +848,7 @@ namespace ApexClicker.Core
                 Strategy = preset.Strategy;
                 FlowMode = preset.FlowMode;
                 NotFoundMode = preset.NotFoundMode;
+                StepTimeoutSec = preset.StepTimeoutSec;
                 LoopQueue = preset.LoopQueue;
                 UseRegion = preset.UseRegion;
                 RegionX = preset.RegionX;
@@ -646,7 +884,6 @@ namespace ApexClicker.Core
             return list;
         }
 
-        // ================= TEMPLATE SEARCH ALGORITHM =================
         private struct MatchResult
         {
             public int X;
@@ -708,8 +945,6 @@ namespace ApexClicker.Core
 
             if (strategy == VisualSelectionStrategy.ClosestToCursor && targetCursorPos.HasValue)
             {
-                // Closest to Cursor:
-                // Rapid anchor-screened candidate collection with thread-safe aggregation
                 var candidates = new List<(int x, int y, long err)>();
                 int minCandidateSpacing = Math.Max(12, Math.Min(tW, tH) / 2);
                 object candLock = new object();
@@ -724,7 +959,6 @@ namespace ApexClicker.Core
 
                         for (int sx = 0; sx <= maxX; sx += 2)
                         {
-                            // 1. Instant 48-pixel anchor screening
                             long aErr = 0;
                             for (int i = 0; i < numAnchors; i++)
                             {
@@ -737,7 +971,6 @@ namespace ApexClicker.Core
                             }
                             if (aErr > maxAnchorError) continue;
 
-                            // 2. Full pixel verification only for candidates passing anchor check
                             long err = 0;
                             for (int i = 0; i < numPixels; i++)
                             {
@@ -843,8 +1076,6 @@ namespace ApexClicker.Core
             }
             else
             {
-                // Highest Confidence (Default):
-                // Multi-core parallel scan with sparse anchor screening
                 object searchLock = new object();
                 long globalBestErr = maxAllowedError + 1;
                 int globalBestX = -1;
@@ -860,7 +1091,6 @@ namespace ApexClicker.Core
 
                         for (int sx = 0; sx <= maxX; sx += 2)
                         {
-                            // 1. Instant 48-pixel anchor screening (rejects 99.9% of non-matching points in ~10 ops)
                             long aErr = 0;
                             for (int i = 0; i < numAnchors; i++)
                             {
@@ -873,7 +1103,6 @@ namespace ApexClicker.Core
                             }
                             if (aErr > maxAnchorError) continue;
 
-                            // 2. Full pixel verification only for plausible target locations
                             long err = 0;
                             for (int i = 0; i < numPixels; i++)
                             {
@@ -907,7 +1136,6 @@ namespace ApexClicker.Core
                     }
                 });
 
-                // Pass 2: Local fine pixel search in ±2 neighborhood around the best candidate
                 if (globalBestX != -1)
                 {
                     int refMinX = Math.Max(0, globalBestX - 2);

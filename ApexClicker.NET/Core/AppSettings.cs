@@ -29,6 +29,8 @@ namespace ApexClicker.Core
         public double VisualCooldownSec { get; set; } = 0.5;
         public double VisualScanIntervalSec { get; set; } = 0.10;
         public int VisualFlowMode { get; set; } = 0; // 0=AnyMatch, 1=Ordered
+        public int VisualNotFoundMode { get; set; } = 0; // 0=WaitThenProceed, 1=SkipToNext
+        public double VisualStepTimeoutSec { get; set; } = 5.0;
         public bool VisualLoopQueue { get; set; } = true;
         public bool VisualUseRegion { get; set; } = false;
         public int VisualRegionX { get; set; } = 100;

@@ -1,0 +1,182 @@
+<Window x:Class="ApexClicker.TextTargetDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="🔤 Add Text Target - Visual Matcher"
+        Height="490" Width="470"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Background="#181825"
+        Foreground="#cdd6f4"
+        FontFamily="Segoe UI"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        BorderBrush="#45475a"
+        BorderThickness="1">
+
+    <Window.Resources>
+        <Style x:Key="DialogActionBtn" TargetType="Button">
+            <Setter Property="Background" Value="#313244"/>
+            <Setter Property="Foreground" Value="#cdd6f4"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#45475a"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="PillBtn" TargetType="Button">
+            <Setter Property="Background" Value="#313244"/>
+            <Setter Property="Foreground" Value="#b4befe"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="8,3"/>
+            <Setter Property="Margin" Value="2,2"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="12" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#cba6f7"/>
+                    <Setter Property="Foreground" Value="#11111b"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Border Padding="20">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/> <!-- Title Bar -->
+                <RowDefinition Height="*"/>    <!-- Body Content -->
+                <RowDefinition Height="Auto"/> <!-- Action Buttons -->
+            </Grid.RowDefinitions>
+
+            <!-- Header / Title -->
+            <Grid Grid.Row="0" Margin="0,0,0,16" MouseDown="TitleBar_MouseDown" Background="Transparent">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="🔤" FontSize="20" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <StackPanel>
+                        <TextBlock Text="Add Text Match Target" FontSize="16" FontWeight="Bold" Foreground="#cba6f7"/>
+                        <TextBlock Text="Match and click buttons by on-screen text" FontSize="11" Foreground="#a6adc8"/>
+                    </StackPanel>
+                </StackPanel>
+                <Button Grid.Column="1" Content="✕" Width="28" Height="28" Background="Transparent" Foreground="#f38ba8" BorderThickness="0" FontSize="14" FontWeight="Bold" Cursor="Hand" Click="BtnCancel_Click"/>
+            </Grid>
+
+            <!-- Body Form -->
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,0,0,14">
+                <StackPanel>
+                    <!-- Text to Match Input -->
+                    <TextBlock Text="Text / Word to Find on Screen:" FontSize="12" FontWeight="Bold" Foreground="#cdd6f4" Margin="0,0,0,4"/>
+                    <TextBox x:Name="TbTextToMatch" Text="Claim" FontSize="15" FontWeight="Bold" Background="#11111b" Foreground="#cba6f7" BorderBrush="#45475a" BorderThickness="1" Padding="8,6" TextChanged="TbTextToMatch_TextChanged"/>
+
+                    <!-- Quick Suggestions -->
+                    <TextBlock Text="Quick presets:" FontSize="10" Foreground="#a6adc8" Margin="0,6,0,2"/>
+                    <WrapPanel Margin="0,0,0,10">
+                        <Button Content="Claim" Style="{StaticResource PillBtn}" Click="Pill_Click"/>
+                        <Button Content="Play" Style="{StaticResource PillBtn}" Click="Pill_Click"/>
+                        <Button Content="Accept" Style="{StaticResource PillBtn}" Click="Pill_Click"/>
+                        <Button Content="OK" Style="{StaticResource PillBtn}" Click="Pill_Click"/>
+                        <Button Content="Start" Style="{StaticResource PillBtn}" Click="Pill_Click"/>
+                        <Button Content="Next" Style="{StaticResource PillBtn}" Click="Pill_Click"/>
+                        <Button Content="Confirm" Style="{StaticResource PillBtn}" Click="Pill_Click"/>
+                        <Button Content="Close" Style="{StaticResource PillBtn}" Click="Pill_Click"/>
+                        <Button Content="Retry" Style="{StaticResource PillBtn}" Click="Pill_Click"/>
+                    </WrapPanel>
+
+                    <!-- Target Name -->
+                    <TextBlock Text="Target Label / Step Name:" FontSize="12" FontWeight="Bold" Foreground="#cdd6f4" Margin="0,4,0,4"/>
+                    <TextBox x:Name="TbTargetName" Text="Text: Claim" Background="#11111b" Foreground="#cdd6f4" BorderBrush="#45475a" BorderThickness="1" Padding="8,5" Margin="0,0,0,12"/>
+
+                    <!-- Match Engine Mode Selection -->
+                    <TextBlock Text="Matching Mode:" FontSize="12" FontWeight="Bold" Foreground="#cdd6f4" Margin="0,0,0,6"/>
+                    <Border Background="#1e1e2e" CornerRadius="8" Padding="10" BorderBrush="#313244" BorderThickness="1" Margin="0,0,0,10">
+                        <StackPanel>
+                            <RadioButton x:Name="RbOcr" GroupName="MatchEngineGroup" Content="👁️ Windows Native OCR (Recommended)" IsChecked="True" Foreground="#cba6f7" FontWeight="Bold" Checked="EngineMode_Changed"/>
+                            <TextBlock Text="Detects words on screen dynamically. Works across all button colors, sizes, and backgrounds." FontSize="10" Foreground="#a6adc8" Margin="20,2,0,8" TextWrapping="Wrap"/>
+
+                            <RadioButton x:Name="RbTemplate" GroupName="MatchEngineGroup" Content="🖼️ Rendered Font Template" Foreground="#89b4fa" FontWeight="Bold" Checked="EngineMode_Changed"/>
+                            <TextBlock Text="Draws text to a transparent pixel template for ultra-fast 5ms template search." FontSize="10" Foreground="#a6adc8" Margin="20,2,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- OCR Options Panel -->
+                    <StackPanel x:Name="PanelOcrOptions" Margin="0,0,0,8">
+                        <CheckBox x:Name="ChkExactWord" Content="Exact word only (e.g. 'Claim' will not match 'Claimed')" Foreground="#cdd6f4" Margin="4,2,0,4"/>
+                        <CheckBox x:Name="ChkCaseSensitive" Content="Case-sensitive match (distinguish A vs a)" Foreground="#cdd6f4" Margin="4,2,0,4"/>
+                    </StackPanel>
+
+                    <!-- Template Options Panel -->
+                    <StackPanel x:Name="PanelTemplateOptions" Visibility="Collapsed" Margin="0,0,0,8">
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,4,0">
+                                <TextBlock Text="Font Family:" FontSize="11" Foreground="#a6adc8" Margin="0,0,0,2"/>
+                                <ComboBox x:Name="CmbFontFamily" SelectedIndex="0" Height="26" SelectionChanged="TemplateOption_Changed">
+                                    <ComboBoxItem Content="Segoe UI"/>
+                                    <ComboBoxItem Content="Arial"/>
+                                    <ComboBoxItem Content="Tahoma"/>
+                                    <ComboBoxItem Content="Consolas"/>
+                                    <ComboBoxItem Content="Impact"/>
+                                </ComboBox>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Margin="4,0,0,0">
+                                <TextBlock Text="Font Size (px):" FontSize="11" Foreground="#a6adc8" Margin="0,0,0,2"/>
+                                <ComboBox x:Name="CmbFontSize" SelectedIndex="2" Height="26" SelectionChanged="TemplateOption_Changed">
+                                    <ComboBoxItem Content="12"/>
+                                    <ComboBoxItem Content="14"/>
+                                    <ComboBoxItem Content="16"/>
+                                    <ComboBoxItem Content="18"/>
+                                    <ComboBoxItem Content="20"/>
+                                    <ComboBoxItem Content="24"/>
+                                    <ComboBoxItem Content="28"/>
+                                    <ComboBoxItem Content="32"/>
+                                </ComboBox>
+                            </StackPanel>
+                        </Grid>
+                        <CheckBox x:Name="ChkFontBold" Content="Bold font styling" IsChecked="True" Foreground="#cdd6f4" Margin="4,2,0,4" Click="TemplateOption_Changed"/>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Action Buttons Footer -->
+            <Grid Grid.Row="2">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Button x:Name="BtnAddTarget" Content="✅ Add to Queue" Grid.Column="0" Style="{StaticResource DialogActionBtn}" Background="#a6e3a1" Foreground="#11111b" FontWeight="Bold" Height="36" Margin="0,0,4,0" Click="BtnAddTarget_Click"/>
+                <Button Content="Cancel" Grid.Column="1" Style="{StaticResource DialogActionBtn}" Background="#313244" Foreground="#cdd6f4" Height="36" Margin="4,0,0,0" Click="BtnCancel_Click"/>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>
