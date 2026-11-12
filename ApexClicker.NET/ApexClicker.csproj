@@ -8,11 +8,11 @@
     <UseWPF>true</UseWPF>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationIcon>icon.ico</ApplicationIcon>
-    <AssemblyTitle>ApexClicker Pro v1.5</AssemblyTitle>
+    <AssemblyTitle>ApexClicker Pro v1.5.1</AssemblyTitle>
     <Product>ApexClicker Pro</Product>
     <Company>ApexClicker Team</Company>
-    <Version>1.5.0</Version>
-    <FileVersion>1.5.0.0</FileVersion>
+    <Version>1.5.1</Version>
+    <FileVersion>1.5.1.0</FileVersion>
   </PropertyGroup>
 
   <ItemGroup>

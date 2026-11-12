@@ -4,12 +4,14 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using ApexClicker.Native;
 
 namespace ApexClicker
 {
     public class RegionPickerWindow : Window
     {
-        private Point _startPoint;
+        private Point _startCanvasPoint;
+        private Win32Api.POINT _startScreenPoint;
         private bool _isDragging;
         private readonly Canvas _canvas;
         private readonly Rectangle _selectionRect;
@@ -71,9 +73,11 @@ namespace ApexClicker
                 if (e.LeftButton == MouseButtonState.Pressed)
                 {
                     _isDragging = true;
-                    _startPoint = e.GetPosition(_canvas);
-                    Canvas.SetLeft(_selectionRect, _startPoint.X);
-                    Canvas.SetTop(_selectionRect, _startPoint.Y);
+                    _startCanvasPoint = e.GetPosition(_canvas);
+                    Win32Api.GetCursorPos(out _startScreenPoint);
+
+                    Canvas.SetLeft(_selectionRect, _startCanvasPoint.X);
+                    Canvas.SetTop(_selectionRect, _startCanvasPoint.Y);
                     _selectionRect.Width = 0;
                     _selectionRect.Height = 0;
                     _selectionRect.Visibility = Visibility.Visible;
@@ -85,17 +89,23 @@ namespace ApexClicker
             {
                 if (_isDragging)
                 {
-                    var cur = e.GetPosition(_canvas);
-                    double x = Math.Min(_startPoint.X, cur.X);
-                    double y = Math.Min(_startPoint.Y, cur.Y);
-                    double w = Math.Abs(cur.X - _startPoint.X);
-                    double h = Math.Abs(cur.Y - _startPoint.Y);
+                    var curCanvas = e.GetPosition(_canvas);
+                    double vx = Math.Min(_startCanvasPoint.X, curCanvas.X);
+                    double vy = Math.Min(_startCanvasPoint.Y, curCanvas.Y);
+                    double vw = Math.Abs(curCanvas.X - _startCanvasPoint.X);
+                    double vh = Math.Abs(curCanvas.Y - _startCanvasPoint.Y);
 
-                    Canvas.SetLeft(_selectionRect, x);
-                    Canvas.SetTop(_selectionRect, y);
-                    _selectionRect.Width = w;
-                    _selectionRect.Height = h;
-                    _infoText.Text = $"Selected Region: {Math.Round(w)} x {Math.Round(h)} px  (X: {Math.Round(x)}, Y: {Math.Round(y)})";
+                    Canvas.SetLeft(_selectionRect, vx);
+                    Canvas.SetTop(_selectionRect, vy);
+                    _selectionRect.Width = vw;
+                    _selectionRect.Height = vh;
+
+                    Win32Api.GetCursorPos(out var curScreen);
+                    int physW = Math.Abs(curScreen.X - _startScreenPoint.X);
+                    int physH = Math.Abs(curScreen.Y - _startScreenPoint.Y);
+                    int physX = Math.Min(_startScreenPoint.X, curScreen.X);
+                    int physY = Math.Min(_startScreenPoint.Y, curScreen.Y);
+                    _infoText.Text = $"Selected Region: {physW} x {physH} px  (X: {physX}, Y: {physY})";
                 }
             };
 
@@ -106,15 +116,15 @@ namespace ApexClicker
                     _isDragging = false;
                     ReleaseMouseCapture();
 
-                    var cur = e.GetPosition(_canvas);
-                    double x = Math.Min(_startPoint.X, cur.X);
-                    double y = Math.Min(_startPoint.Y, cur.Y);
-                    double w = Math.Abs(cur.X - _startPoint.X);
-                    double h = Math.Abs(cur.Y - _startPoint.Y);
+                    Win32Api.GetCursorPos(out var screenEnd);
+                    int physX = Math.Min(_startScreenPoint.X, screenEnd.X);
+                    int physY = Math.Min(_startScreenPoint.Y, screenEnd.Y);
+                    int physW = Math.Abs(screenEnd.X - _startScreenPoint.X);
+                    int physH = Math.Abs(screenEnd.Y - _startScreenPoint.Y);
 
-                    if (w > 15 && h > 15)
+                    if (physW > 15 && physH > 15)
                     {
-                        SelectedRect = new Rect(x, y, w, h);
+                        SelectedRect = new Rect(physX, physY, physW, physH);
                         AreaSelected = true;
                     }
                     Close();

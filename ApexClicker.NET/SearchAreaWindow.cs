@@ -1,7 +1,9 @@
 using System;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
 using System.Windows.Media;
+using ApexClicker.Native;
 
 namespace ApexClicker
 {
@@ -9,6 +11,10 @@ namespace ApexClicker
     {
         private readonly TextBlock _label;
         private readonly Border _mainBorder;
+        private int _lastX = 100;
+        private int _lastY = 100;
+        private int _lastW = 400;
+        private int _lastH = 300;
 
         public SearchAreaWindow()
         {
@@ -18,6 +24,7 @@ namespace ApexClicker
             Topmost = true;
             ShowInTaskbar = false;
             IsHitTestVisible = false; // Click-through so user can still interact with everything
+            WindowStartupLocation = WindowStartupLocation.Manual;
 
             _mainBorder = new Border
             {
@@ -49,15 +56,40 @@ namespace ApexClicker
             badge.Child = _label;
             _mainBorder.Child = badge;
             Content = _mainBorder;
+
+            Loaded += (s, e) => ApplyPhysicalBounds();
         }
 
         public void UpdateBounds(int x, int y, int w, int h)
         {
-            Left = x;
-            Top = y;
-            Width = Math.Max(50, w);
-            Height = Math.Max(35, h);
-            _label.Text = $"🔍 Search Area: {w}x{h} (X:{x}, Y:{y})";
+            _lastX = x;
+            _lastY = y;
+            _lastW = Math.Max(50, w);
+            _lastH = Math.Max(35, h);
+            _label.Text = $"🔍 Search Area: {_lastW}x{_lastH} (X:{_lastX}, Y:{_lastY})";
+
+            ApplyPhysicalBounds();
+        }
+
+        private void ApplyPhysicalBounds()
+        {
+            if (_lastW <= 0 || _lastH <= 0) return;
+
+            var helper = new WindowInteropHelper(this);
+            if (helper.Handle != IntPtr.Zero)
+            {
+                Win32Api.SetWindowPos(helper.Handle, Win32Api.HWND_TOPMOST, _lastX, _lastY, _lastW, _lastH, Win32Api.SWP_NOACTIVATE | Win32Api.SWP_SHOWWINDOW);
+            }
+            else
+            {
+                var source = PresentationSource.FromVisual(this);
+                double scaleX = source?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
+                double scaleY = source?.CompositionTarget?.TransformToDevice.M22 ?? 1.0;
+                Left = _lastX / scaleX;
+                Top = _lastY / scaleY;
+                Width = _lastW / scaleX;
+                Height = _lastH / scaleY;
+            }
         }
     }
 }

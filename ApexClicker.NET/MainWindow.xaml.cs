@@ -685,31 +685,55 @@ namespace ApexClicker
             SaveVisualSettingsToAppConfig();
         }
 
-        private void BtnVisualTestClick_Click(object sender, RoutedEventArgs e)
+        private async void BtnVisualTestClick_Click(object sender, RoutedEventArgs e)
         {
             SyncVisualEngineSettings();
-            var res = _visualEngine.TestAndClick();
-            if (res.found)
+            TxtVisualStatus.Text = "🔍 Searching screen...";
+            BtnVisualTestClick.IsEnabled = false;
+            BtnVisualScanOnly.IsEnabled = false;
+
+            try
             {
-                TxtVisualStatus.Text = $"🎯 Found & Clicked '{res.targetName}' at ({res.pos.X}, {res.pos.Y}) • Match: {res.confidence * 100:F1}%";
+                var res = await Task.Run(() => _visualEngine.TestAndClick());
+                if (res.found)
+                {
+                    TxtVisualStatus.Text = $"🎯 Found & Clicked '{res.targetName}' at ({res.pos.X}, {res.pos.Y}) • Match: {res.confidence * 100:F1}%";
+                }
+                else
+                {
+                    TxtVisualStatus.Text = "❌ No active target was found on screen. Try lowering threshold or check screen.";
+                }
             }
-            else
+            finally
             {
-                TxtVisualStatus.Text = "❌ No active target was found on screen. Try lowering threshold or check screen.";
+                BtnVisualTestClick.IsEnabled = true;
+                BtnVisualScanOnly.IsEnabled = true;
             }
         }
 
-        private void BtnVisualScanOnly_Click(object sender, RoutedEventArgs e)
+        private async void BtnVisualScanOnly_Click(object sender, RoutedEventArgs e)
         {
             SyncVisualEngineSettings();
-            var res = _visualEngine.TestScan();
-            if (res.found)
+            TxtVisualStatus.Text = "🔍 Scanning screen...";
+            BtnVisualTestClick.IsEnabled = false;
+            BtnVisualScanOnly.IsEnabled = false;
+
+            try
             {
-                TxtVisualStatus.Text = $"🔍 Found '{res.targetName}' at ({res.pos.X}, {res.pos.Y}) • Match: {res.confidence * 100:F1}% (Scan only, not clicked)";
+                var res = await Task.Run(() => _visualEngine.TestScan());
+                if (res.found)
+                {
+                    TxtVisualStatus.Text = $"🔍 Found '{res.targetName}' at ({res.pos.X}, {res.pos.Y}) • Match: {res.confidence * 100:F1}% (Scan only, not clicked)";
+                }
+                else
+                {
+                    TxtVisualStatus.Text = "❌ No active target was found on screen.";
+                }
             }
-            else
+            finally
             {
-                TxtVisualStatus.Text = "❌ No active target was found on screen.";
+                BtnVisualTestClick.IsEnabled = true;
+                BtnVisualScanOnly.IsEnabled = true;
             }
         }
 
