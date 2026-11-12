@@ -125,9 +125,13 @@ namespace ApexClicker.Core
         public int Width { get; }
         public int Height { get; }
         public TemplatePixel[] Pixels { get; }
-        public TemplatePixel[] AnchorPixels { get; }
+        public TemplatePixel[] FeaturePixels { get; }
+        public TemplatePixel[] FeatureAnchors { get; }
+        public TemplatePixel[] FeatureSamples { get; }
+        public byte BackgroundGray { get; }
         public int ValidCount { get; }
         public long MaxPossibleError { get; }
+        public long MaxFeatureError { get; }
 
         public PreparedTemplate(VisualTargetItem item, Bitmap bmp)
         {
@@ -138,6 +142,7 @@ namespace ApexClicker.Core
             int w = bmp.Width;
             int h = bmp.Height;
             var pixelList = new List<TemplatePixel>(w * h);
+            int[] hist = new int[256];
 
             BitmapData data = bmp.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
             try
@@ -163,6 +168,7 @@ namespace ApexClicker.Core
                             {
                                 byte gray = (byte)((r * 77 + g * 150 + b * 29) >> 8);
                                 pixelList.Add(new TemplatePixel { X = x, Y = y, Gray = gray });
+                                hist[gray]++;
                             }
                         }
                     }
@@ -180,6 +186,7 @@ namespace ApexClicker.Core
                     for (short x = 0; x < w; x++)
                     {
                         pixelList.Add(new TemplatePixel { X = x, Y = y, Gray = 128 });
+                        hist[128]++;
                     }
                 }
             }
@@ -188,21 +195,54 @@ namespace ApexClicker.Core
             ValidCount = Pixels.Length;
             MaxPossibleError = ValidCount * 255L;
 
-            // Sparse anchor pixels (48 pixels evenly distributed for fast coarse screening)
-            if (pixelList.Count <= 48)
+            // Find predominant background color from histogram
+            byte bg = 0;
+            int maxFreq = -1;
+            for (int i = 0; i < 256; i++)
             {
-                AnchorPixels = Pixels;
-            }
-            else
-            {
-                var anchors = new List<TemplatePixel>(48);
-                int step = Math.Max(1, pixelList.Count / 48);
-                for (int i = 0; i < pixelList.Count && anchors.Count < 48; i += step)
+                if (hist[i] > maxFreq)
                 {
-                    anchors.Add(pixelList[i]);
+                    maxFreq = hist[i];
+                    bg = (byte)i;
                 }
-                AnchorPixels = anchors.ToArray();
             }
+            BackgroundGray = bg;
+
+            // Distinctive feature pixels: text glyphs, borders, symbols (contrast from background >= 20)
+            var featList = new List<TemplatePixel>();
+            foreach (var p in Pixels)
+            {
+                if (Math.Abs(p.Gray - bg) >= 20)
+                {
+                    featList.Add(p);
+                }
+            }
+
+            if (featList.Count < 32)
+            {
+                featList = new List<TemplatePixel>(Pixels);
+            }
+
+            FeaturePixels = featList.ToArray();
+            MaxFeatureError = FeaturePixels.Length * 255L;
+
+            // Distribute 32 feature anchors evenly across FeaturePixels
+            var anchorList = new List<TemplatePixel>(32);
+            int anchorStep = Math.Max(1, FeaturePixels.Length / 32);
+            for (int i = 0; i < FeaturePixels.Length && anchorList.Count < 32; i += anchorStep)
+            {
+                anchorList.Add(FeaturePixels[i]);
+            }
+            FeatureAnchors = anchorList.ToArray();
+
+            // Distribute up to 128 feature samples for fast screening
+            var sampleList = new List<TemplatePixel>(128);
+            int sampleStep = Math.Max(1, FeaturePixels.Length / 128);
+            for (int i = 0; i < FeaturePixels.Length && sampleList.Count < 128; i += sampleStep)
+            {
+                sampleList.Add(FeaturePixels[i]);
+            }
+            FeatureSamples = sampleList.ToArray();
         }
 
         public void Dispose()
@@ -232,6 +272,8 @@ namespace ApexClicker.Core
         public int RegionY { get; set; } = 100;
         public int RegionWidth { get; set; } = 400;
         public int RegionHeight { get; set; } = 300;
+        public int ClickOffsetX { get; set; } = 0;
+        public int ClickOffsetY { get; set; } = 0;
     }
 
     public class TargetMatchResult
@@ -282,7 +324,7 @@ namespace ApexClicker.Core
         {
             get
             {
-                string dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "templates");
+                string dir = Path.Combine(AppSettings.AppDataDirectory, "templates");
                 Directory.CreateDirectory(dir);
                 return dir;
             }
@@ -292,7 +334,7 @@ namespace ApexClicker.Core
         {
             get
             {
-                string dir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "profiles", "visual_bot");
+                string dir = Path.Combine(AppSettings.AppDataDirectory, "profiles", "visual_bot");
                 Directory.CreateDirectory(dir);
                 return dir;
             }
@@ -524,7 +566,13 @@ namespace ApexClicker.Core
                             }
 
                             preparedMap.TryGetValue(currentTarget.Id, out var prep);
-                            var match = FindTarget(screenBmp, currentTarget, prep, null, searchX, searchY, cursorPos);
+                            Windows.Media.Ocr.OcrResult? stepOcr = null;
+                            if (currentTarget.TargetType == VisualTargetType.TextOcr)
+                            {
+                                stepOcr = OcrService.RecognizeAsync(screenBmp).GetAwaiter().GetResult();
+                            }
+
+                            var match = FindTarget(screenBmp, currentTarget, prep, stepOcr, searchX, searchY, cursorPos);
 
                             if (match != null)
                             {
@@ -651,6 +699,9 @@ namespace ApexClicker.Core
                 Win32Api.SetCursorPos(targetX, targetY);
             }
 
+            // Yield briefly (30ms) so Windows and browser engines process cursor position before click events
+            Thread.Sleep(30);
+
             uint downFlag = Button switch
             {
                 MouseButtonType.Right => Win32Api.MOUSEEVENTF_RIGHTDOWN,
@@ -665,14 +716,14 @@ namespace ApexClicker.Core
             };
 
             Win32Api.mouse_event(downFlag, 0, 0, 0, UIntPtr.Zero);
-            Thread.Sleep(2);
+            Thread.Sleep(15);
             Win32Api.mouse_event(upFlag, 0, 0, 0, UIntPtr.Zero);
 
             if (ClickType == ClickType.Double)
             {
-                Thread.Sleep(15);
+                Thread.Sleep(60);
                 Win32Api.mouse_event(downFlag, 0, 0, 0, UIntPtr.Zero);
-                Thread.Sleep(2);
+                Thread.Sleep(15);
                 Win32Api.mouse_event(upFlag, 0, 0, 0, UIntPtr.Zero);
             }
         }
@@ -711,7 +762,13 @@ namespace ApexClicker.Core
                         prep = new PreparedTemplate(target, bmp);
                     }
 
-                    var match = FindTarget(screenBmp, target, prep, null, searchX, searchY, cursorPos);
+                    Windows.Media.Ocr.OcrResult? stepOcr = null;
+                    if (target.TargetType == VisualTargetType.TextOcr)
+                    {
+                        stepOcr = OcrService.RecognizeAsync(screenBmp).GetAwaiter().GetResult();
+                    }
+
+                    var match = FindTarget(screenBmp, target, prep, stepOcr, searchX, searchY, cursorPos);
                     if (match != null)
                     {
                         return (true, $"Step #1: {match.Target.Name}", match.CenterPos, match.Confidence);
@@ -811,7 +868,9 @@ namespace ApexClicker.Core
                 RegionX = RegionX,
                 RegionY = RegionY,
                 RegionWidth = RegionWidth,
-                RegionHeight = RegionHeight
+                RegionHeight = RegionHeight,
+                ClickOffsetX = ClickOffsetX,
+                ClickOffsetY = ClickOffsetY
             };
 
             string path = Path.Combine(PresetsDirectory, $"{presetName}.json");
@@ -855,6 +914,8 @@ namespace ApexClicker.Core
                 RegionY = preset.RegionY;
                 RegionWidth = preset.RegionWidth;
                 RegionHeight = preset.RegionHeight;
+                ClickOffsetX = preset.ClickOffsetX;
+                ClickOffsetY = preset.ClickOffsetY;
 
                 return true;
             }
@@ -934,229 +995,135 @@ namespace ApexClicker.Core
                 screen.UnlockBits(sData);
             }
 
-            var pixels = template.Pixels;
-            var anchors = template.AnchorPixels ?? pixels;
-            int numPixels = pixels.Length;
+            var anchors = template.FeatureAnchors;
+            var samples = template.FeatureSamples;
+            var featPixels = template.FeaturePixels;
             int numAnchors = anchors.Length;
-            if (numPixels == 0) return null;
+            int numSamples = samples.Length;
+            int numFeat = featPixels.Length;
 
-            long maxAllowedError = (long)(numPixels * 255.0 * (1.0 - minConfidence));
-            long maxAnchorError = (long)(numAnchors * 255.0 * (1.0 - minConfidence));
+            if (numFeat == 0) return null;
 
-            if (strategy == VisualSelectionStrategy.ClosestToCursor && targetCursorPos.HasValue)
+            long maxAnchorError = (long)(numAnchors * 255.0 * (1.0 - minConfidence * 0.85));
+            long maxSampleError = (long)(numSamples * 255.0 * (1.0 - minConfidence * 0.85));
+
+            var candidates = new List<(int x, int y, long err)>();
+            int minCandidateSpacing = Math.Max(12, Math.Min(tW, tH) / 2);
+            object candLock = new object();
+            int totalStepsY = (maxY / 2) + 1;
+
+            Parallel.For(0, totalStepsY, (stepY) =>
             {
-                var candidates = new List<(int x, int y, long err)>();
-                int minCandidateSpacing = Math.Max(12, Math.Min(tW, tH) / 2);
-                object candLock = new object();
-                int totalStepsY = (maxY / 2) + 1;
-
-                Parallel.For(0, totalStepsY, (stepY) =>
+                fixed (byte* gPtr = screenGray)
                 {
-                    fixed (byte* gPtr = screenGray)
+                    int sy = stepY * 2;
+                    int rowOffset = sy * sW;
+
+                    for (int sx = 0; sx <= maxX; sx += 2)
                     {
-                        int sy = stepY * 2;
-                        int rowOffset = sy * sW;
-
-                        for (int sx = 0; sx <= maxX; sx += 2)
+                        // Level 1: Screen with 32 distinctive feature anchors
+                        long aErr = 0;
+                        for (int i = 0; i < numAnchors; i++)
                         {
-                            long aErr = 0;
-                            for (int i = 0; i < numAnchors; i++)
-                            {
-                                var ap = anchors[i];
-                                int sVal = gPtr[rowOffset + ap.Y * sW + sx + ap.X];
-                                int d = sVal - ap.Gray;
-                                if (d < 0) d = -d;
-                                aErr += d;
-                                if (aErr > maxAnchorError) break;
-                            }
-                            if (aErr > maxAnchorError) continue;
+                            var ap = anchors[i];
+                            int sVal = gPtr[rowOffset + ap.Y * sW + sx + ap.X];
+                            int d = sVal - ap.Gray;
+                            if (d < 0) d = -d;
+                            aErr += d;
+                            if (aErr > maxAnchorError) break;
+                        }
+                        if (aErr > maxAnchorError) continue;
 
-                            long err = 0;
-                            for (int i = 0; i < numPixels; i++)
-                            {
-                                var p = pixels[i];
-                                int screenVal = gPtr[rowOffset + p.Y * sW + sx + p.X];
-                                int diff = screenVal - p.Gray;
-                                if (diff < 0) diff = -diff;
-                                err += diff;
-                                if (err > maxAllowedError) break;
-                            }
+                        // Level 2: Screen with 128 feature samples
+                        long sErr = 0;
+                        for (int i = 0; i < numSamples; i++)
+                        {
+                            var sp = samples[i];
+                            int sVal = gPtr[rowOffset + sp.Y * sW + sx + sp.X];
+                            int d = sVal - sp.Gray;
+                            if (d < 0) d = -d;
+                            sErr += d;
+                            if (sErr > maxSampleError) break;
+                        }
+                        if (sErr > maxSampleError) continue;
 
-                            if (err <= maxAllowedError)
+                        // Level 3: Candidate registration with replacement of worst candidate
+                        lock (candLock)
+                        {
+                            bool merged = false;
+                            for (int c = 0; c < candidates.Count; c++)
                             {
-                                lock (candLock)
+                                if (Math.Abs(candidates[c].x - sx) < minCandidateSpacing &&
+                                    Math.Abs(candidates[c].y - sy) < minCandidateSpacing)
                                 {
-                                    bool merged = false;
-                                    for (int c = 0; c < candidates.Count; c++)
+                                    if (sErr < candidates[c].err)
                                     {
-                                        if (Math.Abs(candidates[c].x - sx) < minCandidateSpacing &&
-                                            Math.Abs(candidates[c].y - sy) < minCandidateSpacing)
+                                        candidates[c] = (sx, sy, sErr);
+                                    }
+                                    merged = true;
+                                    break;
+                                }
+                            }
+
+                            if (!merged)
+                            {
+                                if (candidates.Count < 32)
+                                {
+                                    candidates.Add((sx, sy, sErr));
+                                }
+                                else
+                                {
+                                    int worstIdx = 0;
+                                    long worstErr = candidates[0].err;
+                                    for (int c = 1; c < candidates.Count; c++)
+                                    {
+                                        if (candidates[c].err > worstErr)
                                         {
-                                            if (err < candidates[c].err)
-                                            {
-                                                candidates[c] = (sx, sy, err);
-                                            }
-                                            merged = true;
-                                            break;
+                                            worstErr = candidates[c].err;
+                                            worstIdx = c;
                                         }
                                     }
-
-                                    if (!merged && candidates.Count < 32)
+                                    if (sErr < worstErr)
                                     {
-                                        candidates.Add((sx, sy, err));
+                                        candidates[worstIdx] = (sx, sy, sErr);
                                     }
                                 }
                             }
                         }
                     }
-                });
-
-                if (candidates.Count > 0)
-                {
-                    MatchResult? bestResult = null;
-                    double minDistanceSq = double.MaxValue;
-
-                    fixed (byte* gPtr = screenGray)
-                    {
-                        foreach (var cand in candidates)
-                        {
-                            int refMinX = Math.Max(0, cand.x - 2);
-                            int refMaxX = Math.Min(maxX, cand.x + 2);
-                            int refMinY = Math.Max(0, cand.y - 2);
-                            int refMaxY = Math.Min(maxY, cand.y + 2);
-
-                            long fineBestErr = cand.err;
-                            int fineBestX = cand.x;
-                            int fineBestY = cand.y;
-
-                            for (int sy = refMinY; sy <= refMaxY; sy++)
-                            {
-                                int rowOffset = sy * sW;
-                                for (int sx = refMinX; sx <= refMaxX; sx++)
-                                {
-                                    long err = 0;
-                                    for (int i = 0; i < numPixels; i++)
-                                    {
-                                        var p = pixels[i];
-                                        int screenVal = gPtr[rowOffset + p.Y * sW + sx + p.X];
-                                        int diff = screenVal - p.Gray;
-                                        if (diff < 0) diff = -diff;
-                                        err += diff;
-                                        if (err >= fineBestErr) break;
-                                    }
-
-                                    if (err < fineBestErr)
-                                    {
-                                        fineBestErr = err;
-                                        fineBestX = sx;
-                                        fineBestY = sy;
-                                    }
-                                }
-                            }
-
-                            double conf = 1.0 - ((double)fineBestErr / (numPixels * 255.0));
-                            if (conf >= minConfidence)
-                            {
-                                int screenMatchX = searchOffsetX + fineBestX + (tW / 2);
-                                int screenMatchY = searchOffsetY + fineBestY + (tH / 2);
-                                double distSq = Math.Pow(screenMatchX - targetCursorPos.Value.X, 2) + 
-                                                Math.Pow(screenMatchY - targetCursorPos.Value.Y, 2);
-
-                                if (distSq < minDistanceSq)
-                                {
-                                    minDistanceSq = distSq;
-                                    bestResult = new MatchResult { X = fineBestX, Y = fineBestY, Confidence = conf };
-                                }
-                            }
-                        }
-                    }
-
-                    if (bestResult.HasValue) return bestResult;
                 }
-            }
-            else
+            });
+
+            if (candidates.Count == 0) return null;
+
+            // Level 4: Fine-tune around candidate locations
+            if (strategy == VisualSelectionStrategy.ClosestToCursor && targetCursorPos.HasValue)
             {
-                object searchLock = new object();
-                long globalBestErr = maxAllowedError + 1;
-                int globalBestX = -1;
-                int globalBestY = -1;
-                int totalStepsY = (maxY / 2) + 1;
+                MatchResult? bestResult = null;
+                double minDistanceSq = double.MaxValue;
 
-                Parallel.For(0, totalStepsY, () => (bestErr: maxAllowedError + 1, bestX: -1, bestY: -1), (stepY, loopState, localState) =>
+                fixed (byte* gPtr = screenGray)
                 {
-                    fixed (byte* gPtr = screenGray)
+                    foreach (var cand in candidates)
                     {
-                        int sy = stepY * 2;
-                        int rowOffset = sy * sW;
+                        int refMinX = Math.Max(0, cand.x - 2);
+                        int refMaxX = Math.Min(maxX, cand.x + 2);
+                        int refMinY = Math.Max(0, cand.y - 2);
+                        int refMaxY = Math.Min(maxY, cand.y + 2);
 
-                        for (int sx = 0; sx <= maxX; sx += 2)
-                        {
-                            long aErr = 0;
-                            for (int i = 0; i < numAnchors; i++)
-                            {
-                                var ap = anchors[i];
-                                int sVal = gPtr[rowOffset + ap.Y * sW + sx + ap.X];
-                                int d = sVal - ap.Gray;
-                                if (d < 0) d = -d;
-                                aErr += d;
-                                if (aErr > maxAnchorError) break;
-                            }
-                            if (aErr > maxAnchorError) continue;
+                        long fineBestErr = long.MaxValue;
+                        int fineBestX = cand.x;
+                        int fineBestY = cand.y;
 
-                            long err = 0;
-                            for (int i = 0; i < numPixels; i++)
-                            {
-                                var p = pixels[i];
-                                int screenVal = gPtr[rowOffset + p.Y * sW + sx + p.X];
-                                int diff = screenVal - p.Gray;
-                                if (diff < 0) diff = -diff;
-                                err += diff;
-                                if (err >= localState.bestErr && err >= globalBestErr) break;
-                            }
-
-                            if (err < localState.bestErr)
-                            {
-                                localState = (err, sx, sy);
-                            }
-                        }
-                    }
-
-                    return localState;
-                },
-                (finalLocal) =>
-                {
-                    lock (searchLock)
-                    {
-                        if (finalLocal.bestX != -1 && finalLocal.bestErr < globalBestErr)
-                        {
-                            globalBestErr = finalLocal.bestErr;
-                            globalBestX = finalLocal.bestX;
-                            globalBestY = finalLocal.bestY;
-                        }
-                    }
-                });
-
-                if (globalBestX != -1)
-                {
-                    int refMinX = Math.Max(0, globalBestX - 2);
-                    int refMaxX = Math.Min(maxX, globalBestX + 2);
-                    int refMinY = Math.Max(0, globalBestY - 2);
-                    int refMaxY = Math.Min(maxY, globalBestY + 2);
-                    long fineBestErr = globalBestErr;
-                    int fineBestX = globalBestX;
-                    int fineBestY = globalBestY;
-
-                    fixed (byte* gPtr = screenGray)
-                    {
                         for (int sy = refMinY; sy <= refMaxY; sy++)
                         {
                             int rowOffset = sy * sW;
                             for (int sx = refMinX; sx <= refMaxX; sx++)
                             {
                                 long err = 0;
-                                for (int i = 0; i < numPixels; i++)
+                                for (int i = 0; i < numFeat; i++)
                                 {
-                                    var p = pixels[i];
+                                    var p = featPixels[i];
                                     int screenVal = gPtr[rowOffset + p.Y * sW + sx + p.X];
                                     int diff = screenVal - p.Gray;
                                     if (diff < 0) diff = -diff;
@@ -1172,12 +1139,74 @@ namespace ApexClicker.Core
                                 }
                             }
                         }
-                    }
 
-                    double confidence = 1.0 - ((double)fineBestErr / (numPixels * 255.0));
-                    if (confidence >= minConfidence)
+                        double conf = 1.0 - ((double)fineBestErr / (numFeat * 255.0));
+                        if (conf >= minConfidence)
+                        {
+                            int screenMatchX = searchOffsetX + fineBestX + (tW / 2);
+                            int screenMatchY = searchOffsetY + fineBestY + (tH / 2);
+                            double distSq = Math.Pow(screenMatchX - targetCursorPos.Value.X, 2) + 
+                                            Math.Pow(screenMatchY - targetCursorPos.Value.Y, 2);
+
+                            if (distSq < minDistanceSq)
+                            {
+                                minDistanceSq = distSq;
+                                bestResult = new MatchResult { X = fineBestX, Y = fineBestY, Confidence = conf };
+                            }
+                        }
+                    }
+                }
+
+                return bestResult;
+            }
+            else
+            {
+                // HighestConfidence
+                int bestX = -1, bestY = -1;
+                long bestFeatErr = long.MaxValue;
+
+                fixed (byte* gPtr = screenGray)
+                {
+                    foreach (var cand in candidates)
                     {
-                        return new MatchResult { X = fineBestX, Y = fineBestY, Confidence = confidence };
+                        int refMinX = Math.Max(0, cand.x - 2);
+                        int refMaxX = Math.Min(maxX, cand.x + 2);
+                        int refMinY = Math.Max(0, cand.y - 2);
+                        int refMaxY = Math.Min(maxY, cand.y + 2);
+
+                        for (int sy = refMinY; sy <= refMaxY; sy++)
+                        {
+                            int rowOffset = sy * sW;
+                            for (int sx = refMinX; sx <= refMaxX; sx++)
+                            {
+                                long err = 0;
+                                for (int i = 0; i < numFeat; i++)
+                                {
+                                    var p = featPixels[i];
+                                    int sVal = gPtr[rowOffset + p.Y * sW + sx + p.X];
+                                    int diff = sVal - p.Gray;
+                                    if (diff < 0) diff = -diff;
+                                    err += diff;
+                                    if (err >= bestFeatErr) break;
+                                }
+
+                                if (err < bestFeatErr)
+                                {
+                                    bestFeatErr = err;
+                                    bestX = sx;
+                                    bestY = sy;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (bestX >= 0)
+                {
+                    double conf = 1.0 - ((double)bestFeatErr / (numFeat * 255.0));
+                    if (conf >= minConfidence)
+                    {
+                        return new MatchResult { X = bestX, Y = bestY, Confidence = conf };
                     }
                 }
             }

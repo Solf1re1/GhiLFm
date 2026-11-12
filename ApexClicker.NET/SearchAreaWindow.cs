@@ -75,20 +75,21 @@ namespace ApexClicker
         {
             if (_lastW <= 0 || _lastH <= 0) return;
 
+            var source = PresentationSource.FromVisual(this);
+            double scaleX = source?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
+            double scaleY = source?.CompositionTarget?.TransformToDevice.M22 ?? 1.0;
+            if (scaleX <= 0) scaleX = 1.0;
+            if (scaleY <= 0) scaleY = 1.0;
+
+            Left = _lastX / scaleX;
+            Top = _lastY / scaleY;
+            Width = _lastW / scaleX;
+            Height = _lastH / scaleY;
+
             var helper = new WindowInteropHelper(this);
             if (helper.Handle != IntPtr.Zero)
             {
                 Win32Api.SetWindowPos(helper.Handle, Win32Api.HWND_TOPMOST, _lastX, _lastY, _lastW, _lastH, Win32Api.SWP_NOACTIVATE | Win32Api.SWP_SHOWWINDOW);
-            }
-            else
-            {
-                var source = PresentationSource.FromVisual(this);
-                double scaleX = source?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
-                double scaleY = source?.CompositionTarget?.TransformToDevice.M22 ?? 1.0;
-                Left = _lastX / scaleX;
-                Top = _lastY / scaleY;
-                Width = _lastW / scaleX;
-                Height = _lastH / scaleY;
             }
         }
     }

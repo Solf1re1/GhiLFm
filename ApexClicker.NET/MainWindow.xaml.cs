@@ -2,8 +2,10 @@ using System;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -38,9 +40,8 @@ namespace ApexClicker
         public MainWindow()
         {
             _isInitializing = true;
-            InitializeComponent();
-
             _settings = AppSettings.Load();
+            InitializeComponent();
 
             // Hook Stats and States
             _clickEngine.StatsUpdated += OnEngineStatsUpdated;
@@ -110,10 +111,25 @@ namespace ApexClicker
             ApplyModuleVisibility();
             RefreshNavButtons();
 
-            // Load Visual Bot Presets & Settings
+            // Load Presets & All App Settings
             LoadVisualPresetsCombo();
-            LoadVisualSettingsFromAppConfig();
+            LoadAllSettingsFromAppConfig();
             UpdateVisualTargetCount();
+
+            // Restore Last Active Page
+            if (!string.IsNullOrWhiteSpace(_settings.LastActiveTab))
+            {
+                switch (_settings.LastActiveTab)
+                {
+                    case "sequence": SetPage("sequence", ViewSequence, NavSequence); break;
+                    case "pixel": SetPage("pixel", ViewPixel, NavPixel); break;
+                    case "visual": SetPage("visual", ViewVisual, NavVisual); break;
+                    case "keyspam": SetPage("keyspam", ViewKeySpam, NavKeySpam); break;
+                    case "macro": SetPage("macro", ViewMacro, NavMacro); break;
+                    case "settings": SetPage("settings", ViewSettings, NavSettings); break;
+                    default: SetPage("burst", ViewBurst, NavBurst); break;
+                }
+            }
 
             _isInitializing = false;
         }
@@ -124,7 +140,7 @@ namespace ApexClicker
             _overlayWindow?.Close();
             _searchAreaOverlay?.Close();
             SyncVisualEngineSettings();
-            SaveVisualSettingsToAppConfig();
+            SaveAllSettingsToAppConfig();
             var helper = new WindowInteropHelper(this);
             Win32Api.UnregisterHotKey(helper.Handle, HOTKEY_ID_TOGGLE);
             Win32Api.UnregisterHotKey(helper.Handle, HOTKEY_ID_PICK_POINT);
@@ -574,12 +590,63 @@ namespace ApexClicker
             if (TbRegY != null && int.TryParse(TbRegY.Text, out int ry)) _visualEngine.RegionY = ry;
             if (TbRegW != null && int.TryParse(TbRegW.Text, out int rw)) _visualEngine.RegionWidth = rw;
             if (TbRegH != null && int.TryParse(TbRegH.Text, out int rh)) _visualEngine.RegionHeight = rh;
+            if (TbVisualOffsetX != null && int.TryParse(TbVisualOffsetX.Text, out int ox)) _visualEngine.ClickOffsetX = ox;
+            if (TbVisualOffsetY != null && int.TryParse(TbVisualOffsetY.Text, out int oy)) _visualEngine.ClickOffsetY = oy;
         }
 
-        private void LoadVisualSettingsFromAppConfig()
+        private void LoadAllSettingsFromAppConfig()
         {
             try
             {
+                // 1. Burst Clicker Settings
+                if (SliderCps != null) SliderCps.Value = Math.Clamp(_settings.BurstCps, 1, 1000);
+                if (CmbMouseButton != null) CmbMouseButton.SelectedIndex = Math.Clamp(_settings.BurstMouseButton, 0, 2);
+                if (CmbClickMode != null) CmbClickMode.SelectedIndex = Math.Clamp(_settings.BurstClickMode, 0, 1);
+                if (RbCursor != null && RbFixed != null)
+                {
+                    if (_settings.BurstFollowCursor) RbCursor.IsChecked = true;
+                    else RbFixed.IsChecked = true;
+                }
+                if (TbCoordX != null) TbCoordX.Text = _settings.BurstFixedX.ToString();
+                if (TbCoordY != null) TbCoordY.Text = _settings.BurstFixedY.ToString();
+
+                // 2. Key Spammer Settings
+                if (TbKeySpamKeys != null && !string.IsNullOrWhiteSpace(_settings.KeySpamKeys)) TbKeySpamKeys.Text = _settings.KeySpamKeys;
+                if (TbKeySpamInterval != null && _settings.KeySpamIntervalMs > 0) TbKeySpamInterval.Text = _settings.KeySpamIntervalMs.ToString();
+
+                // 3. Pixel Trigger Settings
+                if (TbPixelX != null) TbPixelX.Text = _settings.PixelX.ToString();
+                if (TbPixelY != null) TbPixelY.Text = _settings.PixelY.ToString();
+                if (TxtPixelHex != null && !string.IsNullOrWhiteSpace(_settings.PixelColorHex))
+                {
+                    TxtPixelHex.Text = _settings.PixelColorHex;
+                    try
+                    {
+                        var col = System.Drawing.ColorTranslator.FromHtml(_settings.PixelColorHex);
+                        if (BorderPixelColorPreview != null)
+                        {
+                            BorderPixelColorPreview.Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(col.R, col.G, col.B));
+                        }
+                    }
+                    catch { }
+                }
+
+                // 4. Sequence Points Settings
+                if (!string.IsNullOrWhiteSpace(_settings.SequencePointsJson))
+                {
+                    try
+                    {
+                        var points = JsonSerializer.Deserialize<List<SequencePoint>>(_settings.SequencePointsJson);
+                        if (points != null && points.Count > 0)
+                        {
+                            _sequenceEngine.Points.Clear();
+                            foreach (var pt in points) _sequenceEngine.Points.Add(pt);
+                        }
+                    }
+                    catch { }
+                }
+
+                // 5. Visual Bot Settings
                 if (SliderVisualConf != null) SliderVisualConf.Value = _settings.VisualConfidenceThreshold * 100.0;
                 if (CmbVisualAction != null) CmbVisualAction.SelectedIndex = Math.Clamp(_settings.VisualClickAction, 0, 2);
                 if (ChkVisualSmooth != null) ChkVisualSmooth.IsChecked = _settings.VisualSmoothMovement;
@@ -597,17 +664,76 @@ namespace ApexClicker
                 if (TbRegY != null) TbRegY.Text = _settings.VisualRegionY.ToString();
                 if (TbRegW != null) TbRegW.Text = _settings.VisualRegionW.ToString();
                 if (TbRegH != null) TbRegH.Text = _settings.VisualRegionH.ToString();
+                if (TbVisualOffsetX != null) TbVisualOffsetX.Text = _settings.VisualClickOffsetX.ToString();
+                if (TbVisualOffsetY != null) TbVisualOffsetY.Text = _settings.VisualClickOffsetY.ToString();
+                _visualEngine.ClickOffsetX = _settings.VisualClickOffsetX;
+                _visualEngine.ClickOffsetY = _settings.VisualClickOffsetY;
+
+                // 6. Visual Active Targets Queue
+                if (_visualEngine.Targets.Count == 0 && !string.IsNullOrWhiteSpace(_settings.VisualTargetsJson))
+                {
+                    try
+                    {
+                        var targets = JsonSerializer.Deserialize<List<VisualTargetItem>>(_settings.VisualTargetsJson);
+                        if (targets != null && targets.Count > 0)
+                        {
+                            int sNum = 1;
+                            foreach (var t in targets)
+                            {
+                                t.StepNumber = sNum++;
+                                _visualEngine.Targets.Add(t);
+                            }
+                            UpdateVisualTargetCount();
+                        }
+                    }
+                    catch { }
+                }
+
+                if (TbPresetName != null && !string.IsNullOrWhiteSpace(_settings.LastVisualPreset))
+                {
+                    TbPresetName.Text = _settings.LastVisualPreset;
+                }
+
+                // 7. Window Geometry & Navigation
+                if (_settings.WindowWidth.HasValue && _settings.WindowWidth.Value >= 400) Width = _settings.WindowWidth.Value;
+                if (_settings.WindowHeight.HasValue && _settings.WindowHeight.Value >= 300) Height = _settings.WindowHeight.Value;
+                if (_settings.WindowLeft.HasValue && _settings.WindowTop.HasValue)
+                {
+                    Left = _settings.WindowLeft.Value;
+                    Top = _settings.WindowTop.Value;
+                }
 
                 SyncVisualEngineSettings();
             }
             catch { }
         }
 
-        private void SaveVisualSettingsToAppConfig()
+        private void SaveAllSettingsToAppConfig()
         {
             if (_isInitializing) return;
             try
             {
+                // 1. Burst Clicker Settings
+                if (SliderCps != null) _settings.BurstCps = (int)Math.Round(SliderCps.Value);
+                if (CmbMouseButton != null) _settings.BurstMouseButton = CmbMouseButton.SelectedIndex;
+                if (CmbClickMode != null) _settings.BurstClickMode = CmbClickMode.SelectedIndex;
+                if (RbCursor != null) _settings.BurstFollowCursor = RbCursor.IsChecked == true;
+                if (TbCoordX != null && int.TryParse(TbCoordX.Text, out int bx)) _settings.BurstFixedX = bx;
+                if (TbCoordY != null && int.TryParse(TbCoordY.Text, out int by)) _settings.BurstFixedY = by;
+
+                // 2. Key Spammer Settings
+                if (TbKeySpamKeys != null) _settings.KeySpamKeys = TbKeySpamKeys.Text;
+                if (TbKeySpamInterval != null && int.TryParse(TbKeySpamInterval.Text, out int ki)) _settings.KeySpamIntervalMs = ki;
+
+                // 3. Pixel Trigger Settings
+                if (TbPixelX != null && int.TryParse(TbPixelX.Text, out int px)) _settings.PixelX = px;
+                if (TbPixelY != null && int.TryParse(TbPixelY.Text, out int py)) _settings.PixelY = py;
+                if (TxtPixelHex != null) _settings.PixelColorHex = TxtPixelHex.Text;
+
+                // 4. Sequence Points Settings
+                _settings.SequencePointsJson = JsonSerializer.Serialize(_sequenceEngine.Points);
+
+                // 5. Visual Bot Settings
                 _settings.VisualConfidenceThreshold = _visualEngine.ConfidenceThreshold;
                 _settings.VisualClickAction = CmbVisualAction?.SelectedIndex ?? 1;
                 _settings.VisualSmoothMovement = _visualEngine.SmoothMovement;
@@ -624,6 +750,18 @@ namespace ApexClicker
                 _settings.VisualRegionY = _visualEngine.RegionY;
                 _settings.VisualRegionW = _visualEngine.RegionWidth;
                 _settings.VisualRegionH = _visualEngine.RegionHeight;
+                _settings.VisualClickOffsetX = _visualEngine.ClickOffsetX;
+                _settings.VisualClickOffsetY = _visualEngine.ClickOffsetY;
+                if (TbPresetName != null && !string.IsNullOrWhiteSpace(TbPresetName.Text)) _settings.LastVisualPreset = TbPresetName.Text.Trim();
+                _settings.VisualTargetsJson = JsonSerializer.Serialize(_visualEngine.Targets);
+
+                // 6. Navigation & Window Bounds
+                _settings.LastActiveTab = _activeTabKey;
+                if (ActualWidth >= 400) _settings.WindowWidth = ActualWidth;
+                if (ActualHeight >= 300) _settings.WindowHeight = ActualHeight;
+                if (!double.IsNaN(Left) && !double.IsInfinity(Left)) _settings.WindowLeft = Left;
+                if (!double.IsNaN(Top) && !double.IsInfinity(Top)) _settings.WindowTop = Top;
+
                 _settings.Save();
             }
             catch { }
@@ -683,7 +821,7 @@ namespace ApexClicker
 
                 SyncVisualEngineSettings();
                 UpdateSearchAreaOverlay();
-                SaveVisualSettingsToAppConfig();
+                SaveAllSettingsToAppConfig();
                 TxtVisualStatus.Text = $"🎯 Restricted search area set to {TbRegW.Text}x{TbRegH.Text} at ({TbRegX.Text}, {TbRegY.Text})";
             }
         }
@@ -710,7 +848,7 @@ namespace ApexClicker
                     ToggleSearchAreaOverlay();
                 }
             }
-            SaveVisualSettingsToAppConfig();
+            SaveAllSettingsToAppConfig();
         }
 
         private void TbRegion_TextChanged(object sender, TextChangedEventArgs e)
@@ -718,14 +856,21 @@ namespace ApexClicker
             if (_isInitializing) return;
             SyncVisualEngineSettings();
             UpdateSearchAreaOverlay();
-            SaveVisualSettingsToAppConfig();
+            SaveAllSettingsToAppConfig();
         }
 
         private void TbVisualTiming_LostFocus(object sender, RoutedEventArgs e)
         {
             if (_isInitializing) return;
             SyncVisualEngineSettings();
-            SaveVisualSettingsToAppConfig();
+            SaveAllSettingsToAppConfig();
+        }
+
+        private void TbVisualOffset_LostFocus(object sender, RoutedEventArgs e)
+        {
+            if (_isInitializing) return;
+            SyncVisualEngineSettings();
+            SaveAllSettingsToAppConfig();
         }
 
         private void CmbVisualFlow_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -736,21 +881,21 @@ namespace ApexClicker
             {
                 PanelOrderedOptions.Visibility = CmbVisualFlow.SelectedIndex == 1 ? Visibility.Visible : Visibility.Collapsed;
             }
-            SaveVisualSettingsToAppConfig();
+            SaveAllSettingsToAppConfig();
         }
 
         private void CmbVisualStrategy_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (_isInitializing) return;
             SyncVisualEngineSettings();
-            SaveVisualSettingsToAppConfig();
+            SaveAllSettingsToAppConfig();
         }
 
         private void VisualSetting_Changed(object sender, RoutedEventArgs e)
         {
             if (_isInitializing) return;
             SyncVisualEngineSettings();
-            SaveVisualSettingsToAppConfig();
+            SaveAllSettingsToAppConfig();
         }
 
         private async void BtnVisualTestClick_Click(object sender, RoutedEventArgs e)
@@ -815,27 +960,51 @@ namespace ApexClicker
             }
         }
 
+        private void CmbVisualPresets_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_isInitializing) return;
+            if (CmbVisualPresets.SelectedItem is string name && TbPresetName != null)
+            {
+                TbPresetName.Text = name;
+            }
+        }
+
+        private void TbPresetName_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                BtnVisualSavePreset_Click(sender, e);
+                e.Handled = true;
+            }
+        }
+
         private void BtnVisualSavePreset_Click(object sender, RoutedEventArgs e)
         {
             SyncVisualEngineSettings();
-            string presetName = CmbVisualPresets.Text?.Trim() ?? "";
+            string presetName = TbPresetName?.Text?.Trim() ?? "";
+            if (string.IsNullOrWhiteSpace(presetName))
+            {
+                presetName = CmbVisualPresets?.SelectedItem?.ToString()?.Trim() ?? "";
+            }
             if (string.IsNullOrWhiteSpace(presetName))
             {
                 presetName = "Preset_1";
             }
             _visualEngine.SaveToPreset(presetName);
             LoadVisualPresetsCombo();
-            CmbVisualPresets.SelectedItem = presetName;
+            if (CmbVisualPresets != null) CmbVisualPresets.SelectedItem = presetName;
+            if (TbPresetName != null) TbPresetName.Text = presetName;
             _settings.LastVisualPreset = presetName;
-            SaveVisualSettingsToAppConfig();
+            SaveAllSettingsToAppConfig();
             TxtVisualStatus.Text = $"💾 Preset '{presetName}' saved successfully!";
         }
 
         private void BtnVisualLoadPreset_Click(object sender, RoutedEventArgs e)
         {
-            string presetName = CmbVisualPresets.Text?.Trim() ?? "";
+            string presetName = CmbVisualPresets.SelectedItem?.ToString()?.Trim() ?? TbPresetName?.Text?.Trim() ?? "";
             if (!string.IsNullOrWhiteSpace(presetName) && _visualEngine.LoadFromPreset(presetName))
             {
+                if (TbPresetName != null) TbPresetName.Text = presetName;
                 SliderVisualConf.Value = _visualEngine.ConfidenceThreshold * 100.0;
                 CmbVisualAction.SelectedIndex = _visualEngine.ClickType == ClickType.Double ? 1 : (_visualEngine.Button == MouseButtonType.Right ? 2 : 0);
                 ChkVisualSmooth.IsChecked = _visualEngine.SmoothMovement;
@@ -858,17 +1027,19 @@ namespace ApexClicker
                 TbRegY.Text = _visualEngine.RegionY.ToString();
                 TbRegW.Text = _visualEngine.RegionWidth.ToString();
                 TbRegH.Text = _visualEngine.RegionHeight.ToString();
+                if (TbVisualOffsetX != null) TbVisualOffsetX.Text = _visualEngine.ClickOffsetX.ToString();
+                if (TbVisualOffsetY != null) TbVisualOffsetY.Text = _visualEngine.ClickOffsetY.ToString();
 
                 UpdateVisualTargetCount();
                 UpdateSearchAreaOverlay();
-                SaveVisualSettingsToAppConfig();
+                SaveAllSettingsToAppConfig();
                 TxtVisualStatus.Text = $"📂 Loaded preset '{presetName}' ({_visualEngine.Targets.Count} targets)!";
             }
         }
 
         private void BtnVisualDeletePreset_Click(object sender, RoutedEventArgs e)
         {
-            string presetName = CmbVisualPresets.Text?.Trim() ?? "";
+            string presetName = CmbVisualPresets.SelectedItem?.ToString()?.Trim() ?? TbPresetName?.Text?.Trim() ?? "";
             if (!string.IsNullOrWhiteSpace(presetName))
             {
                 string path = Path.Combine(VisualBotEngine.PresetsDirectory, $"{presetName}.json");
@@ -876,6 +1047,7 @@ namespace ApexClicker
                 {
                     File.Delete(path);
                     LoadVisualPresetsCombo();
+                    if (TbPresetName != null) TbPresetName.Text = CmbVisualPresets.SelectedItem?.ToString() ?? "Default";
                     TxtVisualStatus.Text = $"🗑️ Preset '{presetName}' deleted.";
                 }
             }
@@ -885,21 +1057,21 @@ namespace ApexClicker
         {
             SliderVisualConf.Value = 95;
             SyncVisualEngineSettings();
-            SaveVisualSettingsToAppConfig();
+            SaveAllSettingsToAppConfig();
         }
 
         private void BtnPrecisionSimilar_Click(object sender, RoutedEventArgs e)
         {
             SliderVisualConf.Value = 60;
             SyncVisualEngineSettings();
-            SaveVisualSettingsToAppConfig();
+            SaveAllSettingsToAppConfig();
         }
 
         private void BtnPrecisionClosest_Click(object sender, RoutedEventArgs e)
         {
             SliderVisualConf.Value = 45;
             SyncVisualEngineSettings();
-            SaveVisualSettingsToAppConfig();
+            SaveAllSettingsToAppConfig();
         }
 
         private void SliderVisualConf_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -909,7 +1081,7 @@ namespace ApexClicker
             string mode = val >= 90 ? "(Exact)" : (val <= 50 ? "(Closest)" : "(Similar)");
             TxtVisualConfVal.Text = $"{val}% {mode}";
             _visualEngine.ConfidenceThreshold = val / 100.0;
-            SaveVisualSettingsToAppConfig();
+            SaveAllSettingsToAppConfig();
         }
 
         // ================= MACRO CONTROLS =================

@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Windows.Graphics.Imaging;
 using Windows.Media.Ocr;
@@ -65,15 +66,17 @@ namespace ApexClicker.Core
             ms.Position = 0;
 
             var ras = new InMemoryRandomAccessStream();
-            using (var writeStream = ras.AsStreamForWrite())
+            using (var dw = new DataWriter(ras))
             {
-                await ms.CopyToAsync(writeStream);
-                await writeStream.FlushAsync();
+                dw.WriteBytes(ms.ToArray());
+                await dw.StoreAsync().AsTask().ConfigureAwait(false);
+                await dw.FlushAsync().AsTask().ConfigureAwait(false);
+                dw.DetachStream();
             }
-            ras.Seek(0);
 
-            var decoder = await BitmapDecoder.CreateAsync(ras);
-            return await decoder.GetSoftwareBitmapAsync();
+            ras.Seek(0);
+            var decoder = await BitmapDecoder.CreateAsync(ras).AsTask().ConfigureAwait(false);
+            return await decoder.GetSoftwareBitmapAsync().AsTask().ConfigureAwait(false);
         }
 
         public static async Task<OcrResult?> RecognizeAsync(Bitmap bmp)
@@ -83,8 +86,8 @@ namespace ApexClicker.Core
 
             try
             {
-                using var softwareBitmap = await BitmapToSoftwareBitmapAsync(bmp);
-                return await _engine.RecognizeAsync(softwareBitmap);
+                using var softwareBitmap = await BitmapToSoftwareBitmapAsync(bmp).ConfigureAwait(false);
+                return await _engine.RecognizeAsync(softwareBitmap).AsTask().ConfigureAwait(false);
             }
             catch
             {
@@ -102,11 +105,10 @@ namespace ApexClicker.Core
         {
             try
             {
-                var task = RecognizeAsync(bmp);
-                task.Wait(1500); // 1.5s max timeout for safety
-                if (!task.IsCompletedSuccessfully || task.Result == null) return new List<TextMatchResult>();
+                var ocrResult = Task.Run(() => RecognizeAsync(bmp)).GetAwaiter().GetResult();
+                if (ocrResult == null) return new List<TextMatchResult>();
 
-                return ParseOcrResults(task.Result, query, exactWordMatch, caseSensitive, screenOffsetX, screenOffsetY);
+                return ParseOcrResults(ocrResult, query, exactWordMatch, caseSensitive, screenOffsetX, screenOffsetY);
             }
             catch
             {
@@ -125,12 +127,12 @@ namespace ApexClicker.Core
             var matches = new List<TextMatchResult>();
             if (result == null || string.IsNullOrWhiteSpace(query)) return matches;
 
-            string cleanQuery = query.Trim();
+            string cleanQuery = Regex.Replace(query.Trim(), @"\s+", " ");
             var comparison = caseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
 
             foreach (var line in result.Lines)
             {
-                string lineText = line.Text;
+                string lineText = Regex.Replace(line.Text, @"\s+", " ");
                 int phraseIndex = lineText.IndexOf(cleanQuery, comparison);
 
                 if (phraseIndex >= 0)
