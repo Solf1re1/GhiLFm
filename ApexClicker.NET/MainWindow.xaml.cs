@@ -33,9 +33,11 @@ namespace ApexClicker
         private OverlayWindow? _overlayWindow;
         private SearchAreaWindow? _searchAreaOverlay;
         private string _activeTabKey = "burst";
+        private bool _isInitializing = true;
 
         public MainWindow()
         {
+            _isInitializing = true;
             InitializeComponent();
 
             _settings = AppSettings.Load();
@@ -112,6 +114,8 @@ namespace ApexClicker
             LoadVisualPresetsCombo();
             LoadVisualSettingsFromAppConfig();
             UpdateVisualTargetCount();
+
+            _isInitializing = false;
         }
 
         private void MainWindow_Closed(object? sender, EventArgs e)
@@ -484,47 +488,53 @@ namespace ApexClicker
 
         private void SyncVisualEngineSettings()
         {
-            if (SliderVisualConf == null) return;
+            if (_isInitializing || SliderVisualConf == null) return;
             _visualEngine.ConfidenceThreshold = SliderVisualConf.Value / 100.0;
-            _visualEngine.Button = CmbVisualAction.SelectedIndex == 2 ? MouseButtonType.Right : MouseButtonType.Left;
-            _visualEngine.ClickType = CmbVisualAction.SelectedIndex == 1 ? ClickType.Double : ClickType.Single;
-            _visualEngine.SmoothMovement = ChkVisualSmooth.IsChecked == true;
-            _visualEngine.TravelSpeed = CmbVisualSpeed.SelectedIndex switch
+            if (CmbVisualAction != null)
             {
-                0 => CursorTravelSpeed.Fast,
-                2 => CursorTravelSpeed.Gentle,
-                _ => CursorTravelSpeed.Smooth
-            };
-            if (double.TryParse(TbVisualCooldown.Text, out double cd)) _visualEngine.CooldownSec = Math.Max(0.0, cd);
-            if (double.TryParse(TbVisualInterval.Text, out double intvSec)) _visualEngine.ScanIntervalSec = Math.Max(0.01, intvSec);
-            _visualEngine.Strategy = CmbVisualStrategy?.SelectedIndex == 1 ? VisualSelectionStrategy.ClosestToCursor : VisualSelectionStrategy.HighestConfidence;
-            _visualEngine.FlowMode = CmbVisualFlow.SelectedIndex == 1 ? VisualFlowMode.OrderedSteps : VisualFlowMode.AnyMatch;
-            _visualEngine.LoopQueue = ChkVisualLoop.IsChecked == true;
-            _visualEngine.UseRegion = ChkUseRegion.IsChecked == true;
-            if (int.TryParse(TbRegX.Text, out int rx)) _visualEngine.RegionX = rx;
-            if (int.TryParse(TbRegY.Text, out int ry)) _visualEngine.RegionY = ry;
-            if (int.TryParse(TbRegW.Text, out int rw)) _visualEngine.RegionWidth = rw;
-            if (int.TryParse(TbRegH.Text, out int rh)) _visualEngine.RegionHeight = rh;
+                _visualEngine.Button = CmbVisualAction.SelectedIndex == 2 ? MouseButtonType.Right : MouseButtonType.Left;
+                _visualEngine.ClickType = CmbVisualAction.SelectedIndex == 1 ? ClickType.Double : ClickType.Single;
+            }
+            if (ChkVisualSmooth != null) _visualEngine.SmoothMovement = ChkVisualSmooth.IsChecked == true;
+            if (CmbVisualSpeed != null)
+            {
+                _visualEngine.TravelSpeed = CmbVisualSpeed.SelectedIndex switch
+                {
+                    0 => CursorTravelSpeed.Fast,
+                    2 => CursorTravelSpeed.Gentle,
+                    _ => CursorTravelSpeed.Smooth
+                };
+            }
+            if (TbVisualCooldown != null && double.TryParse(TbVisualCooldown.Text, out double cd)) _visualEngine.CooldownSec = Math.Max(0.0, cd);
+            if (TbVisualInterval != null && double.TryParse(TbVisualInterval.Text, out double intvSec)) _visualEngine.ScanIntervalSec = Math.Max(0.01, intvSec);
+            if (CmbVisualStrategy != null) _visualEngine.Strategy = CmbVisualStrategy.SelectedIndex == 1 ? VisualSelectionStrategy.ClosestToCursor : VisualSelectionStrategy.HighestConfidence;
+            if (CmbVisualFlow != null) _visualEngine.FlowMode = CmbVisualFlow.SelectedIndex == 1 ? VisualFlowMode.OrderedSteps : VisualFlowMode.AnyMatch;
+            if (ChkVisualLoop != null) _visualEngine.LoopQueue = ChkVisualLoop.IsChecked == true;
+            if (ChkUseRegion != null) _visualEngine.UseRegion = ChkUseRegion.IsChecked == true;
+            if (TbRegX != null && int.TryParse(TbRegX.Text, out int rx)) _visualEngine.RegionX = rx;
+            if (TbRegY != null && int.TryParse(TbRegY.Text, out int ry)) _visualEngine.RegionY = ry;
+            if (TbRegW != null && int.TryParse(TbRegW.Text, out int rw)) _visualEngine.RegionWidth = rw;
+            if (TbRegH != null && int.TryParse(TbRegH.Text, out int rh)) _visualEngine.RegionHeight = rh;
         }
 
         private void LoadVisualSettingsFromAppConfig()
         {
             try
             {
-                SliderVisualConf.Value = _settings.VisualConfidenceThreshold * 100.0;
-                CmbVisualAction.SelectedIndex = Math.Clamp(_settings.VisualClickAction, 0, 2);
-                ChkVisualSmooth.IsChecked = _settings.VisualSmoothMovement;
-                CmbVisualSpeed.SelectedIndex = Math.Clamp(_settings.VisualTravelSpeed, 0, 2);
-                TbVisualCooldown.Text = _settings.VisualCooldownSec.ToString("0.0");
-                TbVisualInterval.Text = _settings.VisualScanIntervalSec.ToString("0.00");
+                if (SliderVisualConf != null) SliderVisualConf.Value = _settings.VisualConfidenceThreshold * 100.0;
+                if (CmbVisualAction != null) CmbVisualAction.SelectedIndex = Math.Clamp(_settings.VisualClickAction, 0, 2);
+                if (ChkVisualSmooth != null) ChkVisualSmooth.IsChecked = _settings.VisualSmoothMovement;
+                if (CmbVisualSpeed != null) CmbVisualSpeed.SelectedIndex = Math.Clamp(_settings.VisualTravelSpeed, 0, 2);
+                if (TbVisualCooldown != null) TbVisualCooldown.Text = _settings.VisualCooldownSec.ToString("0.0");
+                if (TbVisualInterval != null) TbVisualInterval.Text = _settings.VisualScanIntervalSec.ToString("0.00");
                 if (CmbVisualStrategy != null) CmbVisualStrategy.SelectedIndex = Math.Clamp(_settings.VisualSelectionStrategy, 0, 1);
-                CmbVisualFlow.SelectedIndex = Math.Clamp(_settings.VisualFlowMode, 0, 1);
-                ChkVisualLoop.IsChecked = _settings.VisualLoopQueue;
-                ChkUseRegion.IsChecked = _settings.VisualUseRegion;
-                TbRegX.Text = _settings.VisualRegionX.ToString();
-                TbRegY.Text = _settings.VisualRegionY.ToString();
-                TbRegW.Text = _settings.VisualRegionW.ToString();
-                TbRegH.Text = _settings.VisualRegionH.ToString();
+                if (CmbVisualFlow != null) CmbVisualFlow.SelectedIndex = Math.Clamp(_settings.VisualFlowMode, 0, 1);
+                if (ChkVisualLoop != null) ChkVisualLoop.IsChecked = _settings.VisualLoopQueue;
+                if (ChkUseRegion != null) ChkUseRegion.IsChecked = _settings.VisualUseRegion;
+                if (TbRegX != null) TbRegX.Text = _settings.VisualRegionX.ToString();
+                if (TbRegY != null) TbRegY.Text = _settings.VisualRegionY.ToString();
+                if (TbRegW != null) TbRegW.Text = _settings.VisualRegionW.ToString();
+                if (TbRegH != null) TbRegH.Text = _settings.VisualRegionH.ToString();
 
                 SyncVisualEngineSettings();
             }
@@ -533,6 +543,7 @@ namespace ApexClicker
 
         private void SaveVisualSettingsToAppConfig()
         {
+            if (_isInitializing) return;
             try
             {
                 _settings.VisualConfidenceThreshold = _visualEngine.ConfidenceThreshold;
@@ -556,6 +567,7 @@ namespace ApexClicker
 
         private void UpdateSearchAreaOverlay()
         {
+            if (_isInitializing) return;
             if (_searchAreaOverlay != null && _searchAreaOverlay.IsVisible)
             {
                 _searchAreaOverlay.UpdateBounds(_visualEngine.RegionX, _visualEngine.RegionY, _visualEngine.RegionWidth, _visualEngine.RegionHeight);
@@ -564,6 +576,7 @@ namespace ApexClicker
 
         private void ToggleSearchAreaOverlay()
         {
+            if (_isInitializing) return;
             if (_searchAreaOverlay == null)
             {
                 _searchAreaOverlay = new SearchAreaWindow();
@@ -586,11 +599,13 @@ namespace ApexClicker
 
         private void BtnToggleAreaVisual_Click(object sender, RoutedEventArgs e)
         {
+            if (_isInitializing) return;
             ToggleSearchAreaOverlay();
         }
 
         private void BtnPickAreaScreen_Click(object sender, RoutedEventArgs e)
         {
+            if (_isInitializing) return;
             var picker = new RegionPickerWindow();
             picker.ShowDialog();
             if (picker.AreaSelected)
@@ -611,6 +626,7 @@ namespace ApexClicker
 
         private void ChkUseRegion_Changed(object sender, RoutedEventArgs e)
         {
+            if (_isInitializing) return;
             SyncVisualEngineSettings();
             if (ChkUseRegion.IsChecked == true)
             {
@@ -635,6 +651,7 @@ namespace ApexClicker
 
         private void TbRegion_TextChanged(object sender, TextChangedEventArgs e)
         {
+            if (_isInitializing) return;
             SyncVisualEngineSettings();
             UpdateSearchAreaOverlay();
             SaveVisualSettingsToAppConfig();
@@ -642,24 +659,28 @@ namespace ApexClicker
 
         private void TbVisualTiming_LostFocus(object sender, RoutedEventArgs e)
         {
+            if (_isInitializing) return;
             SyncVisualEngineSettings();
             SaveVisualSettingsToAppConfig();
         }
 
         private void CmbVisualFlow_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
+            if (_isInitializing) return;
             SyncVisualEngineSettings();
             SaveVisualSettingsToAppConfig();
         }
 
         private void CmbVisualStrategy_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
+            if (_isInitializing) return;
             SyncVisualEngineSettings();
             SaveVisualSettingsToAppConfig();
         }
 
         private void VisualSetting_Changed(object sender, RoutedEventArgs e)
         {
+            if (_isInitializing) return;
             SyncVisualEngineSettings();
             SaveVisualSettingsToAppConfig();
         }
@@ -788,7 +809,7 @@ namespace ApexClicker
 
         private void SliderVisualConf_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
-            if (TxtVisualConfVal == null) return;
+            if (_isInitializing || TxtVisualConfVal == null) return;
             double val = Math.Round(e.NewValue);
             string mode = val >= 90 ? "(Exact)" : (val <= 50 ? "(Closest)" : "(Similar)");
             TxtVisualConfVal.Text = $"{val}% {mode}";
