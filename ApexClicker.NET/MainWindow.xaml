@@ -583,11 +583,20 @@
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
                                         <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
-                                    <Button Content="🎯 Exact (95%)" Grid.Column="0" Style="{StaticResource ActionBtn}" Margin="0,0,3,0" Padding="6,4" FontSize="11" Click="BtnPrecisionExact_Click"/>
-                                    <Button Content="🔍 Similar (60%)" Grid.Column="1" Style="{StaticResource ActionBtn}" Margin="3,0,0,0" Padding="6,4" FontSize="11" Click="BtnPrecisionSimilar_Click"/>
+                                    <Button Content="🎯 Exact (95%)" Grid.Column="0" Style="{StaticResource ActionBtn}" Margin="0,0,2,0" Padding="4,4" FontSize="10" Click="BtnPrecisionExact_Click"/>
+                                    <Button Content="🔍 Similar (60%)" Grid.Column="1" Style="{StaticResource ActionBtn}" Margin="2,0,2,0" Padding="4,4" FontSize="10" Click="BtnPrecisionSimilar_Click"/>
+                                    <Button Content="✨ Closest (45%)" Grid.Column="2" Style="{StaticResource ActionBtn}" Margin="2,0,0,0" Padding="4,4" FontSize="10" Click="BtnPrecisionClosest_Click"/>
                                 </Grid>
-                                <Slider x:Name="SliderVisualConf" Minimum="40" Maximum="99" Value="60" ValueChanged="SliderVisualConf_ValueChanged" Margin="0,2,0,8"/>
+                                <Slider x:Name="SliderVisualConf" Minimum="30" Maximum="99" Value="60" ValueChanged="SliderVisualConf_ValueChanged" Margin="0,2,0,8"/>
+
+                                <!-- Target Selection Strategy (Highest Confidence vs Closest to Cursor) -->
+                                <TextBlock Text="Target Selection Strategy:" FontSize="11" Foreground="{DynamicResource ColorTextSecondary}" Margin="0,2,0,3"/>
+                                <ComboBox x:Name="CmbVisualStrategy" SelectedIndex="0" Margin="0,0,0,6" SelectionChanged="CmbVisualStrategy_SelectionChanged">
+                                    <ComboBoxItem Content="🎯 Highest Confidence (Best Match)"/>
+                                    <ComboBoxItem Content="📍 Closest to Cursor (Nearest Match)"/>
+                                </ComboBox>
 
                                 <!-- Mouse Click Action & Travel -->
                                 <Grid Margin="0,2,0,6">
@@ -597,7 +606,7 @@
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Grid.Column="0" Margin="0,0,4,0">
                                         <TextBlock Text="Click Action:" FontSize="11" Foreground="{DynamicResource ColorTextSecondary}" Margin="0,0,0,3"/>
-                                        <ComboBox x:Name="CmbVisualAction" SelectedIndex="1">
+                                        <ComboBox x:Name="CmbVisualAction" SelectedIndex="1" SelectionChanged="VisualSetting_Changed">
                                             <ComboBoxItem Content="Single Click"/>
                                             <ComboBoxItem Content="Double Click"/>
                                             <ComboBoxItem Content="Right Click"/>
@@ -605,7 +614,7 @@
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Margin="4,0,0,0">
                                         <TextBlock Text="Travel Speed:" FontSize="11" Foreground="{DynamicResource ColorTextSecondary}" Margin="0,0,0,3"/>
-                                        <ComboBox x:Name="CmbVisualSpeed" SelectedIndex="1">
+                                        <ComboBox x:Name="CmbVisualSpeed" SelectedIndex="1" SelectionChanged="VisualSetting_Changed">
                                             <ComboBoxItem Content="⚡ Fast (0.15s)"/>
                                             <ComboBoxItem Content="🎯 Smooth (0.25s)"/>
                                             <ComboBoxItem Content="🐢 Gentle (0.40s)"/>
@@ -613,9 +622,9 @@
                                     </StackPanel>
                                 </Grid>
 
-                                <CheckBox x:Name="ChkVisualSmooth" Content="Smooth cursor glide (&quot;Move over&quot; naturally)" IsChecked="True" Foreground="{DynamicResource ColorTextPrimary}" Margin="0,2,0,6"/>
+                                <CheckBox x:Name="ChkVisualSmooth" Content="Smooth cursor glide (&quot;Move over&quot; naturally)" IsChecked="True" Foreground="{DynamicResource ColorTextPrimary}" Margin="0,2,0,6" Click="VisualSetting_Changed"/>
 
-                                <!-- Timing: Cooldown & Interval -->
+                                <!-- Timing: Cooldown & Interval in Seconds -->
                                 <Grid Margin="0,2,0,6">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
@@ -623,34 +632,38 @@
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Grid.Column="0" Margin="0,0,4,0">
                                         <TextBlock Text="Cooldown (s):" FontSize="11" Foreground="{DynamicResource ColorTextSecondary}" Margin="0,0,0,3"/>
-                                        <TextBox x:Name="TbVisualCooldown" Text="0.5" Background="{DynamicResource ColorSidebarBg}" Foreground="{DynamicResource ColorTextPrimary}" BorderBrush="{DynamicResource ColorBorder}" Padding="6,3"/>
+                                        <TextBox x:Name="TbVisualCooldown" Text="0.5" Background="{DynamicResource ColorSidebarBg}" Foreground="{DynamicResource ColorTextPrimary}" BorderBrush="{DynamicResource ColorBorder}" Padding="6,3" LostFocus="TbVisualTiming_LostFocus"/>
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" Margin="4,0,0,0">
-                                        <TextBlock Text="Scan Interval (ms):" FontSize="11" Foreground="{DynamicResource ColorTextSecondary}" Margin="0,0,0,3"/>
-                                        <TextBox x:Name="TbVisualInterval" Text="100" Background="{DynamicResource ColorSidebarBg}" Foreground="{DynamicResource ColorTextPrimary}" BorderBrush="{DynamicResource ColorBorder}" Padding="6,3"/>
+                                        <TextBlock Text="Scan Interval (s):" FontSize="11" Foreground="{DynamicResource ColorTextSecondary}" Margin="0,0,0,3"/>
+                                        <TextBox x:Name="TbVisualInterval" Text="0.10" Background="{DynamicResource ColorSidebarBg}" Foreground="{DynamicResource ColorTextPrimary}" BorderBrush="{DynamicResource ColorBorder}" Padding="6,3" LostFocus="TbVisualTiming_LostFocus"/>
                                     </StackPanel>
                                 </Grid>
 
                                 <!-- Queue Flow Mode -->
                                 <TextBlock Text="Queue Flow Mode:" FontSize="11" Foreground="{DynamicResource ColorTextSecondary}" Margin="0,2,0,3"/>
-                                <ComboBox x:Name="CmbVisualFlow" SelectedIndex="0" Margin="0,0,0,6">
+                                <ComboBox x:Name="CmbVisualFlow" SelectedIndex="0" Margin="0,0,0,6" SelectionChanged="CmbVisualFlow_SelectionChanged">
                                     <ComboBoxItem Content="⚡ Any Match (Clicks whichever target is visible)"/>
                                     <ComboBoxItem Content="🔢 Ordered Steps (1 ➔ 2 ➔ 3)"/>
                                 </ComboBox>
 
-                                <CheckBox x:Name="ChkVisualLoop" Content="🔁 Repeat queue continuously (loop)" IsChecked="True" Foreground="{DynamicResource ColorTextPrimary}" Margin="0,2,0,6"/>
+                                <CheckBox x:Name="ChkVisualLoop" Content="🔁 Repeat queue continuously (loop)" IsChecked="True" Foreground="{DynamicResource ColorTextPrimary}" Margin="0,2,0,6" Click="VisualSetting_Changed"/>
 
-                                <!-- Search Region Checkbox -->
-                                <CheckBox x:Name="ChkUseRegion" Content="Restrict Search to Screen Area" Foreground="{DynamicResource ColorTextPrimary}" Margin="0,4,0,4"/>
+                                <!-- Search Region Checkbox & Visual Controls -->
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,4">
+                                    <CheckBox x:Name="ChkUseRegion" Content="Restrict Search Area" Foreground="{DynamicResource ColorTextPrimary}" VerticalAlignment="Center" Checked="ChkUseRegion_Changed" Unchecked="ChkUseRegion_Changed"/>
+                                    <Button x:Name="BtnToggleAreaVisual" Content="👁️ Show Area Box" Style="{StaticResource ActionBtn}" Padding="8,2" FontSize="10" Margin="10,0,4,0" Click="BtnToggleAreaVisual_Click"/>
+                                    <Button x:Name="BtnPickAreaScreen" Content="🎯 Drag / Pick" Style="{StaticResource ActionBtn}" Padding="8,2" FontSize="10" Margin="4,0,0,0" Click="BtnPickAreaScreen_Click"/>
+                                </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
                                     <TextBlock Text="X:" Foreground="{DynamicResource ColorTextSecondary}" VerticalAlignment="Center"/>
-                                    <TextBox x:Name="TbRegX" Text="100" Width="45" Margin="4,0,8,0" Background="{DynamicResource ColorSidebarBg}" Foreground="{DynamicResource ColorTextPrimary}" BorderBrush="{DynamicResource ColorBorder}" Padding="2"/>
+                                    <TextBox x:Name="TbRegX" Text="100" Width="45" Margin="4,0,8,0" Background="{DynamicResource ColorSidebarBg}" Foreground="{DynamicResource ColorTextPrimary}" BorderBrush="{DynamicResource ColorBorder}" Padding="2" TextChanged="TbRegion_TextChanged"/>
                                     <TextBlock Text="Y:" Foreground="{DynamicResource ColorTextSecondary}" VerticalAlignment="Center"/>
-                                    <TextBox x:Name="TbRegY" Text="100" Width="45" Margin="4,0,8,0" Background="{DynamicResource ColorSidebarBg}" Foreground="{DynamicResource ColorTextPrimary}" BorderBrush="{DynamicResource ColorBorder}" Padding="2"/>
+                                    <TextBox x:Name="TbRegY" Text="100" Width="45" Margin="4,0,8,0" Background="{DynamicResource ColorSidebarBg}" Foreground="{DynamicResource ColorTextPrimary}" BorderBrush="{DynamicResource ColorBorder}" Padding="2" TextChanged="TbRegion_TextChanged"/>
                                     <TextBlock Text="W:" Foreground="{DynamicResource ColorTextSecondary}" VerticalAlignment="Center"/>
-                                    <TextBox x:Name="TbRegW" Text="400" Width="45" Margin="4,0,8,0" Background="{DynamicResource ColorSidebarBg}" Foreground="{DynamicResource ColorTextPrimary}" BorderBrush="{DynamicResource ColorBorder}" Padding="2"/>
+                                    <TextBox x:Name="TbRegW" Text="400" Width="45" Margin="4,0,8,0" Background="{DynamicResource ColorSidebarBg}" Foreground="{DynamicResource ColorTextPrimary}" BorderBrush="{DynamicResource ColorBorder}" Padding="2" TextChanged="TbRegion_TextChanged"/>
                                     <TextBlock Text="H:" Foreground="{DynamicResource ColorTextSecondary}" VerticalAlignment="Center"/>
-                                    <TextBox x:Name="TbRegH" Text="300" Width="45" Margin="4,0,0,0" Background="{DynamicResource ColorSidebarBg}" Foreground="{DynamicResource ColorTextPrimary}" BorderBrush="{DynamicResource ColorBorder}" Padding="2"/>
+                                    <TextBox x:Name="TbRegH" Text="300" Width="45" Margin="4,0,0,0" Background="{DynamicResource ColorSidebarBg}" Foreground="{DynamicResource ColorTextPrimary}" BorderBrush="{DynamicResource ColorBorder}" Padding="2" TextChanged="TbRegion_TextChanged"/>
                                 </StackPanel>
                             </StackPanel>
                         </Border>

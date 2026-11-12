@@ -31,6 +31,7 @@ namespace ApexClicker
         private const int HOTKEY_ID_COMPACT_TOGGLE = 9005;
 
         private OverlayWindow? _overlayWindow;
+        private SearchAreaWindow? _searchAreaOverlay;
         private string _activeTabKey = "burst";
 
         public MainWindow()
@@ -107,8 +108,9 @@ namespace ApexClicker
             ApplyModuleVisibility();
             RefreshNavButtons();
 
-            // Load Visual Bot Presets
+            // Load Visual Bot Presets & Settings
             LoadVisualPresetsCombo();
+            LoadVisualSettingsFromAppConfig();
             UpdateVisualTargetCount();
         }
 
@@ -116,6 +118,9 @@ namespace ApexClicker
         {
             StopAllEngines();
             _overlayWindow?.Close();
+            _searchAreaOverlay?.Close();
+            SyncVisualEngineSettings();
+            SaveVisualSettingsToAppConfig();
             var helper = new WindowInteropHelper(this);
             Win32Api.UnregisterHotKey(helper.Handle, HOTKEY_ID_TOGGLE);
             Win32Api.UnregisterHotKey(helper.Handle, HOTKEY_ID_PICK_POINT);
@@ -479,6 +484,7 @@ namespace ApexClicker
 
         private void SyncVisualEngineSettings()
         {
+            if (SliderVisualConf == null) return;
             _visualEngine.ConfidenceThreshold = SliderVisualConf.Value / 100.0;
             _visualEngine.Button = CmbVisualAction.SelectedIndex == 2 ? MouseButtonType.Right : MouseButtonType.Left;
             _visualEngine.ClickType = CmbVisualAction.SelectedIndex == 1 ? ClickType.Double : ClickType.Single;
@@ -490,7 +496,8 @@ namespace ApexClicker
                 _ => CursorTravelSpeed.Smooth
             };
             if (double.TryParse(TbVisualCooldown.Text, out double cd)) _visualEngine.CooldownSec = Math.Max(0.0, cd);
-            if (int.TryParse(TbVisualInterval.Text, out int intv)) _visualEngine.ScanIntervalMs = Math.Max(10, intv);
+            if (double.TryParse(TbVisualInterval.Text, out double intvSec)) _visualEngine.ScanIntervalSec = Math.Max(0.01, intvSec);
+            _visualEngine.Strategy = CmbVisualStrategy?.SelectedIndex == 1 ? VisualSelectionStrategy.ClosestToCursor : VisualSelectionStrategy.HighestConfidence;
             _visualEngine.FlowMode = CmbVisualFlow.SelectedIndex == 1 ? VisualFlowMode.OrderedSteps : VisualFlowMode.AnyMatch;
             _visualEngine.LoopQueue = ChkVisualLoop.IsChecked == true;
             _visualEngine.UseRegion = ChkUseRegion.IsChecked == true;
@@ -498,6 +505,163 @@ namespace ApexClicker
             if (int.TryParse(TbRegY.Text, out int ry)) _visualEngine.RegionY = ry;
             if (int.TryParse(TbRegW.Text, out int rw)) _visualEngine.RegionWidth = rw;
             if (int.TryParse(TbRegH.Text, out int rh)) _visualEngine.RegionHeight = rh;
+        }
+
+        private void LoadVisualSettingsFromAppConfig()
+        {
+            try
+            {
+                SliderVisualConf.Value = _settings.VisualConfidenceThreshold * 100.0;
+                CmbVisualAction.SelectedIndex = Math.Clamp(_settings.VisualClickAction, 0, 2);
+                ChkVisualSmooth.IsChecked = _settings.VisualSmoothMovement;
+                CmbVisualSpeed.SelectedIndex = Math.Clamp(_settings.VisualTravelSpeed, 0, 2);
+                TbVisualCooldown.Text = _settings.VisualCooldownSec.ToString("0.0");
+                TbVisualInterval.Text = _settings.VisualScanIntervalSec.ToString("0.00");
+                if (CmbVisualStrategy != null) CmbVisualStrategy.SelectedIndex = Math.Clamp(_settings.VisualSelectionStrategy, 0, 1);
+                CmbVisualFlow.SelectedIndex = Math.Clamp(_settings.VisualFlowMode, 0, 1);
+                ChkVisualLoop.IsChecked = _settings.VisualLoopQueue;
+                ChkUseRegion.IsChecked = _settings.VisualUseRegion;
+                TbRegX.Text = _settings.VisualRegionX.ToString();
+                TbRegY.Text = _settings.VisualRegionY.ToString();
+                TbRegW.Text = _settings.VisualRegionW.ToString();
+                TbRegH.Text = _settings.VisualRegionH.ToString();
+
+                SyncVisualEngineSettings();
+            }
+            catch { }
+        }
+
+        private void SaveVisualSettingsToAppConfig()
+        {
+            try
+            {
+                _settings.VisualConfidenceThreshold = _visualEngine.ConfidenceThreshold;
+                _settings.VisualClickAction = CmbVisualAction?.SelectedIndex ?? 1;
+                _settings.VisualSmoothMovement = _visualEngine.SmoothMovement;
+                _settings.VisualTravelSpeed = CmbVisualSpeed?.SelectedIndex ?? 1;
+                _settings.VisualCooldownSec = _visualEngine.CooldownSec;
+                _settings.VisualScanIntervalSec = _visualEngine.ScanIntervalSec;
+                _settings.VisualSelectionStrategy = (int)_visualEngine.Strategy;
+                _settings.VisualFlowMode = (int)_visualEngine.FlowMode;
+                _settings.VisualLoopQueue = _visualEngine.LoopQueue;
+                _settings.VisualUseRegion = _visualEngine.UseRegion;
+                _settings.VisualRegionX = _visualEngine.RegionX;
+                _settings.VisualRegionY = _visualEngine.RegionY;
+                _settings.VisualRegionW = _visualEngine.RegionWidth;
+                _settings.VisualRegionH = _visualEngine.RegionHeight;
+                _settings.Save();
+            }
+            catch { }
+        }
+
+        private void UpdateSearchAreaOverlay()
+        {
+            if (_searchAreaOverlay != null && _searchAreaOverlay.IsVisible)
+            {
+                _searchAreaOverlay.UpdateBounds(_visualEngine.RegionX, _visualEngine.RegionY, _visualEngine.RegionWidth, _visualEngine.RegionHeight);
+            }
+        }
+
+        private void ToggleSearchAreaOverlay()
+        {
+            if (_searchAreaOverlay == null)
+            {
+                _searchAreaOverlay = new SearchAreaWindow();
+                _searchAreaOverlay.Closed += (s, e) => _searchAreaOverlay = null;
+            }
+
+            if (_searchAreaOverlay.IsVisible)
+            {
+                _searchAreaOverlay.Hide();
+                if (BtnToggleAreaVisual != null) BtnToggleAreaVisual.Content = "👁️ Show Area Box";
+            }
+            else
+            {
+                SyncVisualEngineSettings();
+                _searchAreaOverlay.UpdateBounds(_visualEngine.RegionX, _visualEngine.RegionY, _visualEngine.RegionWidth, _visualEngine.RegionHeight);
+                _searchAreaOverlay.Show();
+                if (BtnToggleAreaVisual != null) BtnToggleAreaVisual.Content = "🙈 Hide Area Box";
+            }
+        }
+
+        private void BtnToggleAreaVisual_Click(object sender, RoutedEventArgs e)
+        {
+            ToggleSearchAreaOverlay();
+        }
+
+        private void BtnPickAreaScreen_Click(object sender, RoutedEventArgs e)
+        {
+            var picker = new RegionPickerWindow();
+            picker.ShowDialog();
+            if (picker.AreaSelected)
+            {
+                var rect = picker.SelectedRect;
+                TbRegX.Text = ((int)rect.X).ToString();
+                TbRegY.Text = ((int)rect.Y).ToString();
+                TbRegW.Text = ((int)rect.Width).ToString();
+                TbRegH.Text = ((int)rect.Height).ToString();
+                ChkUseRegion.IsChecked = true;
+
+                SyncVisualEngineSettings();
+                UpdateSearchAreaOverlay();
+                SaveVisualSettingsToAppConfig();
+                TxtVisualStatus.Text = $"🎯 Restricted search area set to {TbRegW.Text}x{TbRegH.Text} at ({TbRegX.Text}, {TbRegY.Text})";
+            }
+        }
+
+        private void ChkUseRegion_Changed(object sender, RoutedEventArgs e)
+        {
+            SyncVisualEngineSettings();
+            if (ChkUseRegion.IsChecked == true)
+            {
+                if (_searchAreaOverlay == null || !_searchAreaOverlay.IsVisible)
+                {
+                    ToggleSearchAreaOverlay();
+                }
+                else
+                {
+                    UpdateSearchAreaOverlay();
+                }
+            }
+            else
+            {
+                if (_searchAreaOverlay != null && _searchAreaOverlay.IsVisible)
+                {
+                    ToggleSearchAreaOverlay();
+                }
+            }
+            SaveVisualSettingsToAppConfig();
+        }
+
+        private void TbRegion_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            SyncVisualEngineSettings();
+            UpdateSearchAreaOverlay();
+            SaveVisualSettingsToAppConfig();
+        }
+
+        private void TbVisualTiming_LostFocus(object sender, RoutedEventArgs e)
+        {
+            SyncVisualEngineSettings();
+            SaveVisualSettingsToAppConfig();
+        }
+
+        private void CmbVisualFlow_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            SyncVisualEngineSettings();
+            SaveVisualSettingsToAppConfig();
+        }
+
+        private void CmbVisualStrategy_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            SyncVisualEngineSettings();
+            SaveVisualSettingsToAppConfig();
+        }
+
+        private void VisualSetting_Changed(object sender, RoutedEventArgs e)
+        {
+            SyncVisualEngineSettings();
+            SaveVisualSettingsToAppConfig();
         }
 
         private void BtnVisualTestClick_Click(object sender, RoutedEventArgs e)
@@ -549,6 +713,8 @@ namespace ApexClicker
             _visualEngine.SaveToPreset(presetName);
             LoadVisualPresetsCombo();
             CmbVisualPresets.SelectedItem = presetName;
+            _settings.LastVisualPreset = presetName;
+            SaveVisualSettingsToAppConfig();
             TxtVisualStatus.Text = $"💾 Preset '{presetName}' saved successfully!";
         }
 
@@ -567,7 +733,8 @@ namespace ApexClicker
                     _ => 1
                 };
                 TbVisualCooldown.Text = _visualEngine.CooldownSec.ToString("0.0");
-                TbVisualInterval.Text = _visualEngine.ScanIntervalMs.ToString();
+                TbVisualInterval.Text = _visualEngine.ScanIntervalSec.ToString("0.00");
+                if (CmbVisualStrategy != null) CmbVisualStrategy.SelectedIndex = (int)_visualEngine.Strategy;
                 CmbVisualFlow.SelectedIndex = (int)_visualEngine.FlowMode;
                 ChkVisualLoop.IsChecked = _visualEngine.LoopQueue;
                 ChkUseRegion.IsChecked = _visualEngine.UseRegion;
@@ -577,6 +744,8 @@ namespace ApexClicker
                 TbRegH.Text = _visualEngine.RegionHeight.ToString();
 
                 UpdateVisualTargetCount();
+                UpdateSearchAreaOverlay();
+                SaveVisualSettingsToAppConfig();
                 TxtVisualStatus.Text = $"📂 Loaded preset '{presetName}' ({_visualEngine.Targets.Count} targets)!";
             }
         }
@@ -599,20 +768,32 @@ namespace ApexClicker
         private void BtnPrecisionExact_Click(object sender, RoutedEventArgs e)
         {
             SliderVisualConf.Value = 95;
+            SyncVisualEngineSettings();
+            SaveVisualSettingsToAppConfig();
         }
 
         private void BtnPrecisionSimilar_Click(object sender, RoutedEventArgs e)
         {
             SliderVisualConf.Value = 60;
+            SyncVisualEngineSettings();
+            SaveVisualSettingsToAppConfig();
+        }
+
+        private void BtnPrecisionClosest_Click(object sender, RoutedEventArgs e)
+        {
+            SliderVisualConf.Value = 45;
+            SyncVisualEngineSettings();
+            SaveVisualSettingsToAppConfig();
         }
 
         private void SliderVisualConf_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
         {
             if (TxtVisualConfVal == null) return;
             double val = Math.Round(e.NewValue);
-            string mode = val >= 90 ? "(Exact)" : "(Similar)";
+            string mode = val >= 90 ? "(Exact)" : (val <= 50 ? "(Closest)" : "(Similar)");
             TxtVisualConfVal.Text = $"{val}% {mode}";
             _visualEngine.ConfidenceThreshold = val / 100.0;
+            SaveVisualSettingsToAppConfig();
         }
 
         // ================= MACRO CONTROLS =================
