@@ -151,7 +151,29 @@ namespace ApexClicker
 
         private IntPtr HwndHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
         {
-            if (msg == Win32Api.WM_HOTKEY)
+            if (msg == 0x0011) // WM_QUERYENDSESSION (OS shutdown, reboot, or logoff)
+            {
+                try
+                {
+                    StopAllEngines();
+                    SyncVisualEngineSettings();
+                    SaveAllSettingsToAppConfig();
+                }
+                catch { }
+                handled = true;
+                return (IntPtr)1; // Grant permission to shut down cleanly
+            }
+            else if (msg == 0x0016) // WM_ENDSESSION
+            {
+                try
+                {
+                    StopAllEngines();
+                }
+                catch { }
+                handled = true;
+                return IntPtr.Zero;
+            }
+            else if (msg == Win32Api.WM_HOTKEY)
             {
                 int id = wParam.ToInt32();
                 if (id == HOTKEY_ID_TOGGLE)
